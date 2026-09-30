@@ -29,7 +29,7 @@ from struct import *
 from knockknock.Profile import Profile
 
 def usage():
-    print "Usage: knockknock.py -p <portToOpen> <host>"
+    print("Usage: knockknock.py -p <portToOpen> <host>")
     sys.exit(2)
     
 def parseArguments(argv):
@@ -61,18 +61,18 @@ def getProfile(host):
     homedir = os.path.expanduser('~')
     
     if not os.path.isdir(homedir + '/.knockknock/'):
-        print "Error: you need to setup your profiles in " + homedir + '/.knockknock/'
+        print("Error: you need to setup your profiles in " + homedir + '/.knockknock/')
         sys.exit(2)
 
     if not os.path.isdir(homedir + '/.knockknock/' + host):
-        print 'Error: profile for host ' + host + ' not found at ' + homedir + '/.knockknock/' + host
+        print('Error: profile for host ' + host + ' not found at ' + homedir + '/.knockknock/' + host)
         sys.exit(2)
 
     return Profile(homedir + '/.knockknock/' + host)
 
 def verifyPermissions():
     if os.getuid() != 0:
-        print 'Sorry, you must be root to run this.'
+        print('Sorry, you must be root to run this.')
         sys.exit(2)    
 
 def existsInPath(command):
@@ -100,7 +100,7 @@ def main(argv):
     hping = existsInPath("hping3")
 
     if hping is None:
-        print "Error, you must install hping3 first."
+        print("Error, you must install hping3 first.")
         sys.exit(2)
 
     command = [hping, "-S", "-c", "1",
@@ -113,11 +113,12 @@ def main(argv):
     
     try:
         subprocess.call(command, shell=False, stdout=open('/dev/null', 'w'), stderr=subprocess.STDOUT)
-        print 'Knock sent.'
+        print('Knock sent.')
 
     except OSError:
-        print "Error: Do you have hping3 installed?"
+        print("Error: Do you have hping3 installed?")
         sys.exit(3)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+

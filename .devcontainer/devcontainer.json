@@ -1,0 +1,33 @@
+{
+  "name": "knockknock",
+  "image": "mcr.microsoft.com/devcontainers/python:3.14",
+  "mounts": [
+    {
+      "source": "${localEnv:HOME}/.gemini",
+      "target": "/home/vscode/.gemini",
+      "type": "bind"
+    }
+  ],
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "version": "latest",
+      "moby": false,
+      "enableDockerBuildx": true
+    },
+    "./features/fix-dind-tmp": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "ms-azuretools.vscode-docker"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python"
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

@@ -17,19 +17,19 @@
 #
 
 import os
-import ConfigParser
+import configparser
 
 class DaemonConfiguration:
 
     def __init__(self, file):
         try:
-            parser = ConfigParser.SafeConfigParser({'delay': '15', 'error_window': '20'})
+            parser = configparser.ConfigParser({'delay': '15', 'error_window': '20'})
             parser.read(file)
 
             self.delay  = int(parser.get('main', 'delay'))
             self.window = int(parser.get('main', 'error_window'))
-        except ConfigParser.NoSectionError:
-            print "knockknock-daemon: config file not found, assuming defaults."
+        except configparser.NoSectionError:
+            print("knockknock-daemon: config file not found, assuming defaults.")
             self.delay  = 15
             self.window = 20
 
@@ -38,3 +38,4 @@ class DaemonConfiguration:
 
     def getWindow(self):
         return self.window
+

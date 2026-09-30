@@ -1,7 +1,7 @@
 import sys, os, shutil
-from distutils.core import setup, Extension
+from setuptools import setup
 
-if sys.argv[1] != "sdist":
+if len(sys.argv) > 1 and sys.argv[1] != "sdist":
     shutil.copyfile("knockknock-daemon.py", "knockknock/knockknock-daemon")
     shutil.copyfile("knockknock-genprofile.py", "knockknock/knockknock-genprofile")
     shutil.copyfile("knockknock-proxy.py", "knockknock/knockknock-proxy")
@@ -15,6 +15,11 @@ setup  (name         = 'knockknock',
         url          = 'http://www.thoughtcrime.org/software/knockknock/',
         license      = 'GPL',
         packages     = ["knockknock", "knockknock.proxy"],
+        install_requires = [
+            'pycryptodome>=3.20.0',
+            'pyasyncore>=1.0.4',
+            'pyasynchat>=1.0.4'
+        ],
         scripts      = ['knockknock/knockknock-daemon',
                         'knockknock/knockknock-genprofile',
                         'knockknock/knockknock-proxy',
@@ -26,7 +31,7 @@ setup  (name         = 'knockknock',
                         ('/etc/knockknock.d/', ['config'])]
        )
 
-print "Cleaning up..."
+print("Cleaning up...")
 
 if os.path.exists("build/"):
     shutil.rmtree("build/")
@@ -42,3 +47,4 @@ except:
 
 def capture(cmd):
     return os.popen(cmd).read().strip()
+

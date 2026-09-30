@@ -8,8 +8,9 @@ class EndpointConnection(asyncore.dispatcher_with_send):
     def __init__(self, shuttle, host, port):
         asyncore.dispatcher_with_send.__init__(self)
         self.shuttle         = shuttle
-        self.buffer          = ""
+        self.buffer          = b""
         self.destination     = (host, port)
+
         self.closed          = False
         self.connectAttempts = 0
 

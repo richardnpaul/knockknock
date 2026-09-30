@@ -17,7 +17,7 @@
 #
 
 import os, socket
-from Profile import Profile
+from .Profile import Profile
 
 class Profiles:
 
