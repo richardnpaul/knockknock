@@ -45,7 +45,7 @@ class ProxyServer(asyncore.dispatcher):
 
 
 def usage():
-    print "knockknock-proxy <listenPort>"
+    print("knockknock-proxy <listenPort>")
     sys.exit(3)
 
 def getProfiles():
@@ -57,14 +57,14 @@ def getProfiles():
 
 def checkPrivileges():
     if not os.geteuid() == 0:
-        print "\nSorry, knockknock-proxy has to be run as root.\n"
+        print("\nSorry, knockknock-proxy has to be run as root.\n")
         usage()
 
 def checkProfiles():
     homedir = os.path.expanduser('~')
 
     if not os.path.isdir(homedir + '/.knockknock/'):
-        print "Error: you need to setup your profiles in " + homedir + "/.knockknock/"
+        print("Error: you need to setup your profiles in " + homedir + "/.knockknock/")
         sys.exit(2)
 
 def main(argv):
@@ -84,3 +84,4 @@ def main(argv):
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+

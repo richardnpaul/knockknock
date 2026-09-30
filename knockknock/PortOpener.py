@@ -19,9 +19,10 @@
 import os, syslog, time
 import subprocess
 
-from RuleTimer import RuleTimer
+from .RuleTimer import RuleTimer
 
 class PortOpener:
+
 
     def __init__(self, stream, openDuration):
         self.stream       = stream

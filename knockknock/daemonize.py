@@ -40,16 +40,16 @@ def createDaemon():
 
    try:
       pid = os.fork()
-   except OSError, e:
-      raise Exception, "%s [%d]" % (e.strerror, e.errno)
+   except OSError as e:
+      raise Exception("%s [%d]" % (e.strerror, e.errno))
 
    if (pid == 0):	# The first child.
       os.setsid()
 
       try:
          pid = os.fork()	# Fork a second child.
-      except OSError, e:
-         raise Exception, "%s [%d]" % (e.strerror, e.errno)
+      except OSError as e:
+         raise Exception("%s [%d]" % (e.strerror, e.errno))
 
       if (pid == 0):	# The second child.
          os.chdir(WORKDIR)
@@ -58,6 +58,7 @@ def createDaemon():
          os._exit(0)	# Exit parent (the first child) of the second child.
    else:
       os._exit(0)	# Exit parent of the first child.
+
 
 #   import resource		# Resource usage information.
 #   maxfd = resource.getrlimit(resource.RLIMIT_NOFILE)[1]

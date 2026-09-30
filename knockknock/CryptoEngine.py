@@ -17,7 +17,7 @@
 #
 
 import os, hmac, hashlib
-from MacFailedException import MacFailedException
+from .MacFailedException import MacFailedException
 from Crypto.Cipher import AES
 from struct import *
 
@@ -39,7 +39,7 @@ class CryptoEngine:
         localMac = self.calculateMac(port)
 
         if (localMac != remoteMac):
-            raise MacFailedException, "MAC Doesn't Match!"
+            raise MacFailedException("MAC Doesn't Match!")
 
     def encryptCounter(self, counter):
         counterBytes = pack('!IIII', 0, 0, 0, counter)
@@ -49,10 +49,7 @@ class CryptoEngine:
         plaintextData += self.calculateMac(plaintextData)
         counterCrypt   = self.encryptCounter(self.counter)
         self.counter   = self.counter + 1
-        encrypted      = str()
-
-        for i in range((len(plaintextData))):
-            encrypted += chr(ord(plaintextData[i]) ^ ord(counterCrypt[i]))
+        encrypted      = bytes(b1 ^ b2 for b1, b2 in zip(plaintextData, counterCrypt))
 
         self.profile.setCounter(self.counter)
         self.profile.storeCounter()
@@ -63,10 +60,7 @@ class CryptoEngine:
         for x in range(windowSize):
             try:
                 counterCrypt = self.encryptCounter(self.counter + x)
-                decrypted    = str()
-                
-                for i in range((len(encryptedData))):
-                    decrypted += chr(ord(encryptedData[i]) ^ ord(counterCrypt[i]))
+                decrypted    = bytes(b1 ^ b2 for b1, b2 in zip(encryptedData, counterCrypt))
                     
                 port = decrypted[:2]
                 mac  = decrypted[2:]
@@ -82,4 +76,5 @@ class CryptoEngine:
             except MacFailedException:
                 pass
 
-        raise MacFailedException, "Ciphertext failed to decrypt in range..."
+        raise MacFailedException("Ciphertext failed to decrypt in range...")
+

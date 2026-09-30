@@ -30,12 +30,12 @@ DAEMON_DIR   = '/etc/knockknock.d/'
 PROFILES_DIR = DAEMON_DIR + 'profiles/'
 
 def usage():
-    print "knockknock-genprofile <profileName> <knockPort>"
+    print("knockknock-genprofile <profileName> <knockPort>")
     sys.exit(3)
 
 def checkProfile(profileName):
     if (os.path.isdir(PROFILES_DIR + profileName)):
-        print "Profile already exists.  First rm " + PROFILES_DIR + profileName + "/"
+        print("Profile already exists.  First rm " + PROFILES_DIR + profileName + "/")
         sys.exit(0)
 
 def checkPortConflict(knockPort):
@@ -46,7 +46,7 @@ def checkPortConflict(knockPort):
     matchingProfile = profiles.getProfileForPort(knockPort)
 
     if (matchingProfile != None):
-        print "A profile already exists for knock port: " + str(knockPort) + " at this location: " + matchingProfile.getDirectory()
+        print("A profile already exists for knock port: " + str(knockPort) + " at this location: " + matchingProfile.getDirectory())
 
 def createDirectory(profileName):
     if not os.path.isdir(DAEMON_DIR):
@@ -79,7 +79,8 @@ def main(argv):
     profile.serialize()
     random.close()
 
-    print "Keys successfully generated in " + PROFILES_DIR + profileName
+    print("Keys successfully generated in " + PROFILES_DIR + profileName)
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+

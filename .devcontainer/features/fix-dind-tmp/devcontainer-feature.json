@@ -1,0 +1,9 @@
+{
+  "id": "fix-dind-tmp",
+  "version": "1.0.0",
+  "name": "Fix DinD tmp mount",
+  "description": "Prevents docker-in-docker from shadowing /tmp with a new tmpfs mount",
+  "installsAfter": [
+    "ghcr.io/devcontainers/features/docker-in-docker"
+  ]
+}

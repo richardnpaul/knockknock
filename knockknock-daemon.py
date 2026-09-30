@@ -36,16 +36,16 @@ import knockknock.daemonize
 
 def checkPrivileges():
     if (not os.geteuid() == 0):
-        print "Sorry, you have to run knockknock-daemon as root."
+        print("Sorry, you have to run knockknock-daemon as root.")
         sys.exit(3)
 
 def checkConfiguration():
     if (not os.path.isdir('/etc/knockknock.d/')):
-        print "/etc/knockknock.d/ does not exist.  You need to setup your profiles first.."
+        print("/etc/knockknock.d/ does not exist.  You need to setup your profiles first..")
         sys.exit(3)
 
     if (not os.path.isdir('/etc/knockknock.d/profiles/')):
-        print "/etc/knockknock.d/profiles/ does not exist.  You need to setup your profiles first..."
+        print("/etc/knockknock.d/profiles/ does not exist.  You need to setup your profiles first...")
         sys.exit(3)
 
 def dropPrivileges():
@@ -77,7 +77,7 @@ def main(argv):
     config     = DaemonConfiguration('/etc/knockknock.d/config')
 
     if (profiles.isEmpty()):
-        print 'WARNING: Running knockknock-daemon without any active profiles.'
+        print('WARNING: Running knockknock-daemon without any active profiles.')
 
     knockknock.daemonize.createDaemon()
 
@@ -93,3 +93,4 @@ def main(argv):
                 
 if __name__ == '__main__':
     main(sys.argv[1:])
+

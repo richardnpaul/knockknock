@@ -17,12 +17,12 @@
 #
 
 import os, string
-import ConfigParser
+import configparser
 import binascii
 import stat
 from struct import *
 
-from CryptoEngine import CryptoEngine
+from .CryptoEngine import CryptoEngine
 
 class Profile:
 
@@ -100,13 +100,13 @@ class Profile:
         return int(counter)
 
     def loadConfig(self):
-        config = ConfigParser.SafeConfigParser()
+        config = configparser.ConfigParser()
         config.read(self.directory + "/config")
         
         return config.get('main', 'knock_port')
 
     def loadKey(self, keyFile):
-        file = open(keyFile, 'r')
+        file = open(keyFile, 'rb')
         key  = binascii.a2b_base64(file.readline())        
 
         file.close()
@@ -129,7 +129,7 @@ class Profile:
         self.counterFile.flush()
 
     def storeConfig(self):
-        config = ConfigParser.SafeConfigParser()
+        config = configparser.ConfigParser()
         config.add_section('main')
         config.set('main', 'knock_port', str(self.knockPort))
 
@@ -140,7 +140,7 @@ class Profile:
         self.setPermissions(self.directory + "/config")
 
     def storeKey(self, key, path):
-        file = open(path, 'w')
+        file = open(path, 'wb')
         file.write(binascii.b2a_base64(key))
         file.close()
 
@@ -155,6 +155,6 @@ class Profile:
 
     def printHex(self, val):
         for c in val:
-            print "%#x" % ord(c),
+            print("%#x" % (ord(c) if isinstance(c, str) else c), end=" ")
             
-        print ""
+        print("")

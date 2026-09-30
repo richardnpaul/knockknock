@@ -1,7 +1,8 @@
 
-from EndpointConnection import EndpointConnection
+from .EndpointConnection import EndpointConnection
 
 import subprocess
+
 import time
 
 from struct import *
