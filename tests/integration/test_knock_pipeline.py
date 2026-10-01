@@ -1,9 +1,8 @@
-import io
 import os
 import struct
 import tempfile
 import unittest
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 from knockknock.DaemonConfiguration import DaemonConfiguration
 from knockknock.KnockWatcher import KnockWatcher
@@ -72,9 +71,7 @@ class TestKnockPipelineIntegration(unittest.TestCase):
         )
 
     @patch("knockknock.PortOpener.subprocess.call")
-    def test_full_knock_pipeline_opens_port_and_advances_counter(
-        self, mock_subprocess_call
-    ):
+    def test_full_knock_pipeline_opens_port_and_advances_counter(self, mock_subprocess_call):
         mock_subprocess_call.return_value = 0
 
         # 1. Client encrypts knock for target port 8080
@@ -86,9 +83,7 @@ class TestKnockPipelineIntegration(unittest.TestCase):
 
         # 2. Kernel logs the packet
         src_ip = "198.51.100.42"
-        log_line = self.generate_log_line(
-            src_ip, self.knock_port, id_field, seq_field, ack_field, win_field
-        )
+        log_line = self.generate_log_line(src_ip, self.knock_port, id_field, seq_field, ack_field, win_field)
         with open(self.log_path, "w") as f:
             f.write(log_line)
 
@@ -128,9 +123,7 @@ class TestKnockPipelineIntegration(unittest.TestCase):
             "open_ports",
             f"{{ {src_ip} . {target_port} timeout {self.config.getDelay()}s }}",
         ]
-        mock_subprocess_call.assert_called_once_with(
-            expected_nft_cmd, shell=False
-        )
+        mock_subprocess_call.assert_called_once_with(expected_nft_cmd, shell=False)
 
         # 5. Verify server counter advanced to 1
         reloaded_server_profile = Profile(self.server_profile_path)
@@ -144,9 +137,7 @@ class TestKnockPipelineIntegration(unittest.TestCase):
         id_field, seq_field, ack_field, win_field = struct.unpack("!HIIH", encrypted_data)
 
         src_ip = "198.51.100.42"
-        log_line = self.generate_log_line(
-            src_ip, self.knock_port, id_field, seq_field, ack_field, win_field
-        )
+        log_line = self.generate_log_line(src_ip, self.knock_port, id_field, seq_field, ack_field, win_field)
 
         profiles = Profiles(self.profiles_dir)
         mock_opener = MagicMock()
@@ -179,9 +170,7 @@ class TestKnockPipelineIntegration(unittest.TestCase):
         tampered_seq = (seq_field ^ 0x12345678) & 0xFFFFFFFF
 
         src_ip = "198.51.100.42"
-        log_line = self.generate_log_line(
-            src_ip, self.knock_port, id_field, tampered_seq, ack_field, win_field
-        )
+        log_line = self.generate_log_line(src_ip, self.knock_port, id_field, tampered_seq, ack_field, win_field)
 
         profiles = Profiles(self.profiles_dir)
         mock_opener = MagicMock()

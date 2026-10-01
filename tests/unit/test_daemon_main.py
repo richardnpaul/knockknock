@@ -1,7 +1,8 @@
 import importlib.util
-from pathlib import Path
 import signal
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 daemon_path = Path(__file__).resolve().parent.parent.parent / "knockknock-daemon.py"
@@ -12,7 +13,6 @@ spec.loader.exec_module(knockknock_daemon)
 
 
 class TestDaemonMain:
-
     def test_handle_firewall_initialises_nft_and_attaches_signal_handlers(self) -> None:
         mock_nft_setup = MagicMock()
         mock_config = MagicMock()
@@ -25,10 +25,11 @@ class TestDaemonMain:
         def fake_signal(sig, handler):
             signal_handlers[sig] = handler
 
-        with patch.object(knockknock_daemon, "NftSetup", return_value=mock_nft_setup) as mock_nft_cls, \
-             patch("signal.signal", side_effect=fake_signal), \
-             patch.object(knockknock_daemon, "PortOpener", return_value=mock_port_opener) as mock_opener_cls:
-
+        with (
+            patch.object(knockknock_daemon, "NftSetup", return_value=mock_nft_setup) as mock_nft_cls,
+            patch("signal.signal", side_effect=fake_signal),
+            patch.object(knockknock_daemon, "PortOpener", return_value=mock_port_opener) as mock_opener_cls,
+        ):
             knockknock_daemon.handleFirewall(mock_stream, mock_config)
 
             mock_nft_cls.assert_called_once_with()
@@ -63,10 +64,11 @@ class TestDaemonMain:
         mock_port_opener = MagicMock()
         mock_port_opener.waitForRequests.side_effect = RuntimeError("stream error")
 
-        with patch.object(knockknock_daemon, "NftSetup", return_value=mock_nft_setup), \
-             patch("signal.signal"), \
-             patch.object(knockknock_daemon, "PortOpener", return_value=mock_port_opener):
-
+        with (
+            patch.object(knockknock_daemon, "NftSetup", return_value=mock_nft_setup),
+            patch("signal.signal"),
+            patch.object(knockknock_daemon, "PortOpener", return_value=mock_port_opener),
+        ):
             with pytest.raises(RuntimeError):
                 knockknock_daemon.handleFirewall(mock_stream, mock_config)
 

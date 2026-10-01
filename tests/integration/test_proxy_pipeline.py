@@ -1,14 +1,13 @@
 import asyncio
 import importlib.util
 import os
-from pathlib import Path
 import socket
 import struct
 import tempfile
 import threading
-import time
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 from knockknock.Profile import Profile
 from knockknock.Profiles import Profiles
@@ -22,7 +21,6 @@ ProxyServer = proxy_mod.ProxyServer
 
 
 class TestProxyPipelineIntegration(unittest.TestCase):
-
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.profiles_dir = os.path.join(self.temp_dir.name, "profiles")

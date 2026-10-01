@@ -2,15 +2,15 @@
 
 import argparse
 import os
-from pathlib import Path
 import sys
-from typing import List, NoReturn, Optional
+from pathlib import Path
+from typing import NoReturn
 
 from knockknock.Profile import Profile
 from knockknock.Profiles import Profiles
 
-DAEMON_PATH = Path('/etc/knockknock.d')
-PROFILES_PATH = DAEMON_PATH / 'profiles'
+DAEMON_PATH = Path("/etc/knockknock.d")
+PROFILES_PATH = DAEMON_PATH / "profiles"
 
 
 def usage() -> NoReturn:
@@ -19,7 +19,6 @@ def usage() -> NoReturn:
 
 
 class GenProfileArgumentParser(argparse.ArgumentParser):
-
     def error(self, message: str) -> NoReturn:
         usage()
 
@@ -59,7 +58,7 @@ def createDirectory(profileName: str) -> None:
         target_dir.mkdir(parents=True, exist_ok=True)
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
@@ -89,5 +88,5 @@ def main(argv: Optional[List[str]] = None) -> None:
     print("Keys successfully generated in " + str(profile_dir))
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(sys.argv[1:])

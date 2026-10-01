@@ -1,7 +1,8 @@
 import importlib.util
-from pathlib import Path
 import struct
+from pathlib import Path
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 cli_path = Path(__file__).resolve().parent.parent.parent / "knockknock.py"
@@ -12,7 +13,6 @@ spec.loader.exec_module(knockknock_cli)
 
 
 class TestKnockKnockMain:
-
     def test_exists_in_path_removed(self) -> None:
         assert not hasattr(knockknock_cli, "existsInPath")
 
@@ -21,15 +21,14 @@ class TestKnockKnockMain:
         mock_profile.getKnockPort.return_value = 12345
         mock_profile.encrypt.return_value = struct.pack("!HIIH", 111, 222, 333, 444)
 
-        with patch.object(knockknock_cli, "verifyPermissions"), \
-             patch.object(knockknock_cli, "getProfile", return_value=mock_profile), \
-             patch.object(knockknock_cli, "send_syn") as mock_send_syn:
-
+        with (
+            patch.object(knockknock_cli, "verifyPermissions"),
+            patch.object(knockknock_cli, "getProfile", return_value=mock_profile),
+            patch.object(knockknock_cli, "send_syn") as mock_send_syn,
+        ):
             knockknock_cli.main(["-p", "22", "target.example.com"])
 
-            mock_send_syn.assert_called_once_with(
-                "target.example.com", 12345, 111, 222, 333, 444
-            )
+            mock_send_syn.assert_called_once_with("target.example.com", 12345, 111, 222, 333, 444)
             captured = capsys.readouterr()
             assert "Knock sent." in captured.out
 
@@ -38,10 +37,11 @@ class TestKnockKnockMain:
         mock_profile.getKnockPort.return_value = 12345
         mock_profile.encrypt.return_value = struct.pack("!HIIH", 111, 222, 333, 444)
 
-        with patch.object(knockknock_cli, "verifyPermissions"), \
-             patch.object(knockknock_cli, "getProfile", return_value=mock_profile), \
-             patch.object(knockknock_cli, "send_syn", side_effect=PermissionError("Need CAP_NET_RAW")):
-
+        with (
+            patch.object(knockknock_cli, "verifyPermissions"),
+            patch.object(knockknock_cli, "getProfile", return_value=mock_profile),
+            patch.object(knockknock_cli, "send_syn", side_effect=PermissionError("Need CAP_NET_RAW")),
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 knockknock_cli.main(["-p", "22", "target.example.com"])
 
@@ -54,10 +54,11 @@ class TestKnockKnockMain:
         mock_profile.getKnockPort.return_value = 12345
         mock_profile.encrypt.return_value = struct.pack("!HIIH", 111, 222, 333, 444)
 
-        with patch.object(knockknock_cli, "verifyPermissions"), \
-             patch.object(knockknock_cli, "getProfile", return_value=mock_profile), \
-             patch.object(knockknock_cli, "send_syn", side_effect=OSError("Network unreachable")):
-
+        with (
+            patch.object(knockknock_cli, "verifyPermissions"),
+            patch.object(knockknock_cli, "getProfile", return_value=mock_profile),
+            patch.object(knockknock_cli, "send_syn", side_effect=OSError("Network unreachable")),
+        ):
             with pytest.raises(SystemExit) as exc_info:
                 knockknock_cli.main(["-p", "22", "target.example.com"])
 
@@ -107,6 +108,7 @@ class TestKnockKnockMain:
         host_dir = knock_dir / "somehost"
         host_dir.mkdir()
         import binascii
+
         b64_key = binascii.b2a_base64(b"0" * 32)
         (host_dir / "cipher.key").write_bytes(b64_key)
         (host_dir / "mac.key").write_bytes(b64_key)

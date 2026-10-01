@@ -2,10 +2,10 @@
 
 import argparse
 import os
-from pathlib import Path
 import struct
 import sys
-from typing import List, NoReturn, Optional, Tuple
+from pathlib import Path
+from typing import NoReturn
 
 from knockknock.PacketSender import send_syn
 from knockknock.Profile import Profile
@@ -17,12 +17,11 @@ def usage() -> NoReturn:
 
 
 class KnockArgumentParser(argparse.ArgumentParser):
-
     def error(self, message: str) -> NoReturn:
         usage()
 
 
-def parseArguments(argv: List[str]) -> Tuple[int, str]:
+def parseArguments(argv: list[str]) -> tuple[int, str]:
     parser = KnockArgumentParser(add_help=False)
     parser.add_argument("-p", dest="port", type=int, default=0)
     parser.add_argument("host", nargs="?", default="")
@@ -39,12 +38,12 @@ def getProfile(host: str) -> Profile:
     knock_dir = homedir / ".knockknock"
 
     if not knock_dir.is_dir():
-        print("Error: you need to setup your profiles in " + str(homedir) + '/.knockknock/')
+        print("Error: you need to setup your profiles in " + str(homedir) + "/.knockknock/")
         sys.exit(2)
 
     host_profile_dir = knock_dir / host
     if not host_profile_dir.is_dir():
-        print('Error: profile for host ' + host + ' not found at ' + str(host_profile_dir))
+        print("Error: profile for host " + host + " not found at " + str(host_profile_dir))
         sys.exit(2)
 
     return Profile(str(host_profile_dir))
@@ -52,11 +51,11 @@ def getProfile(host: str) -> Profile:
 
 def verifyPermissions() -> None:
     if os.getuid() != 0:
-        print('Sorry, you must be root to run this.')
+        print("Sorry, you must be root to run this.")
         sys.exit(2)
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
@@ -64,19 +63,19 @@ def main(argv: Optional[List[str]] = None) -> None:
     verifyPermissions()
 
     profile = getProfile(host)
-    packed_port = struct.pack('!H', int(port))
+    packed_port = struct.pack("!H", int(port))
     packetData = profile.encrypt(packed_port)
     knockPort = int(profile.getKnockPort())
 
-    idField, seqField, ackField, winField = struct.unpack('!HIIH', packetData)
+    idField, seqField, ackField, winField = struct.unpack("!HIIH", packetData)
 
     try:
         send_syn(host, knockPort, idField, seqField, ackField, winField)
-        print('Knock sent.')
+        print("Knock sent.")
     except (PermissionError, OSError) as e:
         print(f"Error sending knock packet: {e}")
         sys.exit(2)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(sys.argv[1:])

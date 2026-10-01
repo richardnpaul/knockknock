@@ -1,11 +1,11 @@
 from unittest.mock import call, patch
+
 import pytest
 
 from knockknock.NftSetup import NftSetup
 
 
 class TestNftSetup:
-
     def test_init_raises_system_exit_if_nft_missing(self, capsys: pytest.CaptureFixture[str]) -> None:
         with patch("shutil.which", return_value=None):
             with pytest.raises(SystemExit) as exc_info:
@@ -20,8 +20,7 @@ class TestNftSetup:
             assert setup.nft_path == "/usr/sbin/nft"
 
     def test_initialise_issues_idempotent_nft_calls(self) -> None:
-        with patch("shutil.which", return_value="/usr/sbin/nft"), \
-             patch("subprocess.call", return_value=0) as mock_call:
+        with patch("shutil.which", return_value="/usr/sbin/nft"), patch("subprocess.call", return_value=0) as mock_call:
             setup = NftSetup()
             setup.initialise()
 
@@ -82,8 +81,7 @@ class TestNftSetup:
             assert mock_call.call_args_list == expected_calls
 
     def test_teardown_issues_delete_table(self) -> None:
-        with patch("shutil.which", return_value="/usr/sbin/nft"), \
-             patch("subprocess.call", return_value=0) as mock_call:
+        with patch("shutil.which", return_value="/usr/sbin/nft"), patch("subprocess.call", return_value=0) as mock_call:
             setup = NftSetup()
             setup.teardown()
 

@@ -1,35 +1,34 @@
-from pathlib import Path
 import socket
-from typing import List, Optional, Union
+from pathlib import Path
+from typing import Union
 
 from .Profile import Profile
 
 
 class Profiles:
-
     def __init__(self, directory: Union[str, Path]) -> None:
-        self.profiles: List[Profile] = []
+        self.profiles: list[Profile] = []
         dir_path = Path(directory)
 
         for item in sorted(dir_path.iterdir()):
             if item.is_dir():
                 self.profiles.append(Profile(str(item)))
 
-    def getProfileForPort(self, port: Union[int, str]) -> Optional[Profile]:
+    def getProfileForPort(self, port: Union[int, str]) -> Profile | None:
         for profile in self.profiles:
             if int(profile.getKnockPort()) == int(port):
                 return profile
 
         return None
 
-    def getProfileForName(self, name: str) -> Optional[Profile]:
+    def getProfileForName(self, name: str) -> Profile | None:
         for profile in self.profiles:
             if name == profile.getName():
                 return profile
 
         return None
 
-    def getProfileForIP(self, ip: str) -> Optional[Profile]:
+    def getProfileForIP(self, ip: str) -> Profile | None:
         for profile in self.profiles:
             ips = profile.getIPAddrs()
 

@@ -8,11 +8,10 @@ from Crypto.Cipher import AES
 from .MacFailedException import MacFailedException
 
 if TYPE_CHECKING:
-    from .Profile import Profile
+    pass
 
 
 class CryptoEngine:
-
     def __init__(self, profile: Any, cipherKey: bytes, macKey: bytes, counter: int) -> None:
         self.profile = profile
         self.counter: int = counter
@@ -32,7 +31,7 @@ class CryptoEngine:
             raise MacFailedException("MAC Doesn't Match!")
 
     def encryptCounter(self, counter: int) -> bytes:
-        counterBytes = struct.pack('!IIII', 0, 0, 0, counter)
+        counterBytes = struct.pack("!IIII", 0, 0, 0, counter)
         return self.cipher.encrypt(counterBytes)
 
     def encrypt(self, plaintextData: bytes) -> bytes:

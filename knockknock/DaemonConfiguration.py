@@ -4,14 +4,13 @@ from typing import Union
 
 
 class DaemonConfiguration:
-
     def __init__(self, file: Union[str, Path]) -> None:
         try:
-            parser = configparser.ConfigParser({'delay': '15', 'error_window': '20'})
+            parser = configparser.ConfigParser({"delay": "15", "error_window": "20"})
             parser.read(file)
 
-            self.delay: int = int(parser.get('main', 'delay'))
-            self.window: int = int(parser.get('main', 'error_window'))
+            self.delay: int = int(parser.get("main", "delay"))
+            self.window: int = int(parser.get("main", "error_window"))
         except configparser.NoSectionError:
             print("knockknock-daemon: config file not found, assuming defaults.")
             self.delay = 15

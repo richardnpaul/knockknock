@@ -1,6 +1,7 @@
 import os
 import shutil
 import sys
+
 from setuptools import setup
 
 if len(sys.argv) > 1 and sys.argv[1] != "sdist":
@@ -11,10 +12,10 @@ if len(sys.argv) > 1 and sys.argv[1] != "sdist":
 
 setup(
     scripts=[
-        'knockknock/knockknock-daemon',
-        'knockknock/knockknock-genprofile',
-        'knockknock/knockknock-proxy',
-        'knockknock/knockknock',
+        "knockknock/knockknock-daemon",
+        "knockknock/knockknock-genprofile",
+        "knockknock/knockknock-proxy",
+        "knockknock/knockknock",
     ],
 )
 

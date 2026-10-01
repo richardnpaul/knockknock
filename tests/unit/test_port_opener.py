@@ -1,12 +1,12 @@
 import io
 from unittest.mock import MagicMock, patch
+
 import pytest
 
 from knockknock.PortOpener import PortOpener
 
 
 class TestPortOpener:
-
     def test_open_success(self) -> None:
         fake_stream = io.StringIO()
         opener = PortOpener(fake_stream, openDuration=15)
@@ -30,17 +30,26 @@ class TestPortOpener:
         mock_on_exit = MagicMock()
         opener = PortOpener(stream, openDuration=15, on_exit=mock_on_exit)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog") as mock_syslog, \
-             patch("os._exit") as mock_exit:
-
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog") as mock_syslog,
+            patch("os._exit") as mock_exit,
+        ):
             mock_exit.side_effect = SystemExit(4)
 
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
 
             mock_subprocess_call.assert_called_once_with(
-                [opener.nft_path, "add", "element", "inet", "knockknock", "open_ports", "{ 10.0.0.1 . 22 timeout 15s }"],
+                [
+                    opener.nft_path,
+                    "add",
+                    "element",
+                    "inet",
+                    "knockknock",
+                    "open_ports",
+                    "{ 10.0.0.1 . 22 timeout 15s }",
+                ],
                 shell=False,
             )
             mock_on_exit.assert_called_once_with()
@@ -54,17 +63,16 @@ class TestPortOpener:
             ("0.0.0.0", "65535", "{ 0.0.0.0 . 65535 timeout 15s }"),
         ],
     )
-    def test_wait_for_requests_valid_boundary_ports_and_ips(
-        self, ip: str, port: str, expected_element: str
-    ) -> None:
+    def test_wait_for_requests_valid_boundary_ports_and_ips(self, ip: str, port: str, expected_element: str) -> None:
         input_data = f"{ip}\n{port}\n"
         stream = io.StringIO(input_data)
         opener = PortOpener(stream, openDuration=15)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog"), \
-             patch("os._exit", side_effect=SystemExit(4)):
-
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog"),
+            patch("os._exit", side_effect=SystemExit(4)),
+        ):
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
 
@@ -79,9 +87,11 @@ class TestPortOpener:
         mock_on_exit = MagicMock()
         opener = PortOpener(stream, openDuration=10, on_exit=mock_on_exit)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog") as mock_syslog, \
-             patch("os._exit") as mock_exit:
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog") as mock_syslog,
+            patch("os._exit") as mock_exit,
+        ):
             mock_exit.side_effect = SystemExit(4)
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
@@ -96,9 +106,11 @@ class TestPortOpener:
         stream = io.StringIO(input_data)
         opener = PortOpener(stream, openDuration=10)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog") as mock_syslog, \
-             patch("os._exit") as mock_exit:
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog") as mock_syslog,
+            patch("os._exit") as mock_exit,
+        ):
             mock_exit.side_effect = SystemExit(4)
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
@@ -126,9 +138,11 @@ class TestPortOpener:
         mock_on_exit = MagicMock()
         opener = PortOpener(stream, openDuration=15, on_exit=mock_on_exit)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog") as mock_syslog, \
-             patch("os._exit") as mock_exit:
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog") as mock_syslog,
+            patch("os._exit") as mock_exit,
+        ):
             mock_exit.side_effect = SystemExit(4)
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
@@ -155,9 +169,11 @@ class TestPortOpener:
         mock_on_exit = MagicMock()
         opener = PortOpener(stream, openDuration=15, on_exit=mock_on_exit)
 
-        with patch("subprocess.call") as mock_subprocess_call, \
-             patch("syslog.syslog") as mock_syslog, \
-             patch("os._exit") as mock_exit:
+        with (
+            patch("subprocess.call") as mock_subprocess_call,
+            patch("syslog.syslog") as mock_syslog,
+            patch("os._exit") as mock_exit,
+        ):
             mock_exit.side_effect = SystemExit(4)
             with pytest.raises(SystemExit):
                 opener.waitForRequests()
@@ -190,4 +206,3 @@ class TestPortOpener:
         assert PortOpener._is_valid_port("") is False
         assert PortOpener._is_valid_port("-1") is False
         assert PortOpener._is_valid_port("80a") is False
-

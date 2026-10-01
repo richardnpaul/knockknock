@@ -3,9 +3,9 @@
 import argparse
 import asyncio
 import os
-from pathlib import Path
 import sys
-from typing import List, NoReturn, Optional
+from pathlib import Path
+from typing import NoReturn
 
 import knockknock.daemonize
 from knockknock.Profiles import Profiles
@@ -13,23 +13,18 @@ from knockknock.proxy.SocksRequestHandler import SocksRequestHandler
 
 
 class ProxyServer:
-
     def __init__(self, port: int, profiles: Profiles, host: str = "127.0.0.1") -> None:
         self.port = port
         self.profiles = profiles
         self.host = host
-        self.server: Optional[asyncio.Server] = None
+        self.server: asyncio.Server | None = None
 
-    async def handle_client(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
+    async def handle_client(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         handler = SocksRequestHandler(reader, writer, self.profiles)
         await handler.handle()
 
     async def start(self) -> None:
-        self.server = await asyncio.start_server(
-            self.handle_client, self.host, self.port
-        )
+        self.server = await asyncio.start_server(self.handle_client, self.host, self.port)
 
     async def serve_forever(self) -> None:
         if self.server is None:
@@ -52,14 +47,13 @@ def usage() -> NoReturn:
 
 
 class ProxyArgumentParser(argparse.ArgumentParser):
-
     def error(self, message: str) -> NoReturn:
         usage()
 
 
 def getProfiles() -> Profiles:
     homedir = Path.home()
-    profiles = Profiles(str(homedir / '.knockknock/'))
+    profiles = Profiles(str(homedir / ".knockknock/"))
     profiles.resolveNames()
 
     return profiles
@@ -74,12 +68,12 @@ def checkPrivileges() -> None:
 def checkProfiles() -> None:
     homedir = Path.home()
 
-    if not (homedir / '.knockknock').is_dir():
+    if not (homedir / ".knockknock").is_dir():
         print("Error: you need to setup your profiles in " + str(homedir) + "/.knockknock/")
         sys.exit(2)
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
@@ -101,5 +95,5 @@ def main(argv: Optional[List[str]] = None) -> None:
     asyncio.run(server.serve_forever())
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(sys.argv[1:])

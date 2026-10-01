@@ -8,7 +8,6 @@ from knockknock.proxy.SocksRequestHandler import SocksRequestHandler
 
 
 class TestSocksRequestHandler(unittest.TestCase):
-
     def setUp(self):
         self.mock_sock = MagicMock()
         self.mock_profiles = MagicMock()
@@ -326,6 +325,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             handler = SocksRequestHandler(None, None, self.mock_profiles)
             await handler.handle()
             self.assertFalse(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_invalid_version(self):
@@ -338,6 +338,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             handler = SocksRequestHandler(mock_reader, mock_writer, self.mock_profiles)
             await handler.handle()
             self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_unsupported_auth(self):
@@ -347,13 +348,14 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer.drain = AsyncMock()
             mock_reader.readexactly.side_effect = [
                 b"\x05\x01",  # Greeting: VER=5, 1 method
-                b"\x02",      # Method: USERNAME/PASSWORD (not supported)
+                b"\x02",  # Method: USERNAME/PASSWORD (not supported)
             ]
 
             handler = SocksRequestHandler(mock_reader, mock_writer, self.mock_profiles)
             await handler.handle()
             mock_writer.write.assert_called_with(b"\x05\xff")
             self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_unsupported_command(self):
@@ -362,8 +364,8 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer = MagicMock()
             mock_writer.drain = AsyncMock()
             mock_reader.readexactly.side_effect = [
-                b"\x05\x01",          # Greeting
-                b"\x00",              # No auth
+                b"\x05\x01",  # Greeting
+                b"\x00",  # No auth
                 b"\x05\x02\x00\x01",  # Command 0x02 (BIND - unsupported)
             ]
 
@@ -372,6 +374,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer.write.assert_any_call(b"\x05\x07\x00\x01\x00\x00\x00\x00\x00\x00")
             mock_writer.drain.assert_called()
             self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_unsupported_address_type(self):
@@ -380,8 +383,8 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer = MagicMock()
             mock_writer.drain = AsyncMock()
             mock_reader.readexactly.side_effect = [
-                b"\x05\x01",          # Greeting
-                b"\x00",              # No auth
+                b"\x05\x01",  # Greeting
+                b"\x00",  # No auth
                 b"\x05\x01\x00\x04",  # Command 0x01 (CONNECT), addressType 0x04 (IPv6 - unsupported)
             ]
 
@@ -389,6 +392,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             await handler.handle()
             mock_writer.write.assert_any_call(b"\x05\x08\x00\x01\x00\x00\x00\x00\x00\x00")
             self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_success_ipv4_pipeline(self):
@@ -397,8 +401,8 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer = MagicMock()
             mock_writer.drain = AsyncMock()
             mock_reader.readexactly.side_effect = [
-                b"\x05\x01",          # Greeting
-                b"\x00",              # No Auth
+                b"\x05\x01",  # Greeting
+                b"\x00",  # No Auth
                 b"\x05\x01\x00\x01",  # CONNECT IPv4
                 b"\x7f\x00\x00\x01\x1f\x90",  # 127.0.0.1:8080
             ]
@@ -417,6 +421,7 @@ class TestSocksRequestHandler(unittest.TestCase):
                     mock_endpoint.connect.assert_called_once()
                     mock_stream.assert_called_once()
                     self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_success_domain_pipeline(self):
@@ -425,10 +430,10 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer = MagicMock()
             mock_writer.drain = AsyncMock()
             mock_reader.readexactly.side_effect = [
-                b"\x05\x01",          # Greeting
-                b"\x00",              # No Auth
+                b"\x05\x01",  # Greeting
+                b"\x00",  # No Auth
                 b"\x05\x01\x00\x03",  # CONNECT Domain
-                b"\x0b",              # 11 bytes domain length
+                b"\x0b",  # 11 bytes domain length
                 b"example.com\x01\xbb",  # example.com:443
             ]
             self.mock_profiles.getProfileForName.return_value = None
@@ -447,6 +452,7 @@ class TestSocksRequestHandler(unittest.TestCase):
                     self.assertEqual(handler.port, 443)
                     mock_endpoint.connect.assert_called_once()
                     mock_stream.assert_called_once()
+
         asyncio.run(_run())
 
     def test_handle_endpoint_connect_fails(self):
@@ -471,6 +477,7 @@ class TestSocksRequestHandler(unittest.TestCase):
 
                 await handler.handle()
                 self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_endpoint_none_after_process_address_and_port(self):
@@ -489,6 +496,7 @@ class TestSocksRequestHandler(unittest.TestCase):
                 handler.endpoint = None
                 await handler.handle()
                 self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_handle_incomplete_read_error(self):
@@ -501,6 +509,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             handler = SocksRequestHandler(mock_reader, mock_writer, self.mock_profiles)
             await handler.handle()
             self.assertTrue(handler.closed)
+
         asyncio.run(_run())
 
     def test_drain_writer_handles_oserror(self):
@@ -512,6 +521,7 @@ class TestSocksRequestHandler(unittest.TestCase):
             mock_writer.drain = AsyncMock(side_effect=OSError("drain fail"))
             handler.writer = mock_writer
             await handler._drain_writer()
+
         asyncio.run(_run())
 
     def test_stream_bidirectional_transfers_data(self):
@@ -557,6 +567,7 @@ class TestSocksRequestHandler(unittest.TestCase):
 
             mock_endpoint.write.assert_called_with(b"client_msg")
             mock_client_writer.write.assert_called_with(b"endpoint_msg")
+
         asyncio.run(_run())
 
     def test_endpoint_drain_calls_drain_and_handles_error(self):
@@ -579,6 +590,7 @@ class TestSocksRequestHandler(unittest.TestCase):
 
             handler.endpoint = None
             await handler._endpoint_drain()
+
         asyncio.run(_run())
 
     def test_handle_close_endpoint_present_writer_none(self):
@@ -605,4 +617,5 @@ class TestSocksRequestHandler(unittest.TestCase):
             await self.handler._copy_stream(mock_reader, mock_write, mock_drain)
             mock_write.assert_called_once_with(b"data")
             mock_drain.assert_called_once()
+
         asyncio.run(_run())

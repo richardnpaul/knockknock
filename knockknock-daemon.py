@@ -4,22 +4,22 @@
 import argparse
 import grp
 import os
-from pathlib import Path
 import pwd
 import signal
 import sys
-from typing import IO, Any, List, NoReturn, Optional
+from pathlib import Path
+from typing import IO, Any, NoReturn
 
+import knockknock.daemonize
 from knockknock.DaemonConfiguration import DaemonConfiguration
 from knockknock.KnockWatcher import KnockWatcher
 from knockknock.LogFile import LogFile
 from knockknock.NftSetup import NftSetup
 from knockknock.PortOpener import PortOpener
 from knockknock.Profiles import Profiles
-import knockknock.daemonize
 
-DAEMON_PATH = Path('/etc/knockknock.d')
-PROFILES_PATH = DAEMON_PATH / 'profiles'
+DAEMON_PATH = Path("/etc/knockknock.d")
+PROFILES_PATH = DAEMON_PATH / "profiles"
 
 
 def usage() -> NoReturn:
@@ -28,7 +28,6 @@ def usage() -> NoReturn:
 
 
 class DaemonArgumentParser(argparse.ArgumentParser):
-
     def error(self, message: str) -> NoReturn:
         usage()
 
@@ -50,8 +49,8 @@ def checkConfiguration() -> None:
 
 
 def dropPrivileges() -> None:
-    nobody = pwd.getpwnam('nobody')
-    adm = grp.getgrnam('adm')
+    nobody = pwd.getpwnam("nobody")
+    adm = grp.getgrnam("adm")
 
     os.setgroups([adm.gr_gid])
     os.setgid(adm.gr_gid)
@@ -79,14 +78,14 @@ def handleFirewall(input_stream: IO[str], config: DaemonConfiguration) -> None:
 def handleKnocks(output_stream: IO[str], profiles: Profiles, config: DaemonConfiguration) -> None:
     dropPrivileges()
 
-    logFile = LogFile('/var/log/kern.log')
+    logFile = LogFile("/var/log/kern.log")
     portOpener = PortOpener(output_stream, config.getDelay())
     knockWatcher = KnockWatcher(config, logFile, profiles, portOpener)
 
     knockWatcher.tailAndProcess()
 
 
-def main(argv: Optional[List[str]] = None) -> None:
+def main(argv: list[str] | None = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
 
@@ -99,10 +98,10 @@ def main(argv: Optional[List[str]] = None) -> None:
     checkConfiguration()
 
     profiles = Profiles(str(PROFILES_PATH))
-    config = DaemonConfiguration(str(DAEMON_PATH / 'config'))
+    config = DaemonConfiguration(str(DAEMON_PATH / "config"))
 
     if profiles.isEmpty():
-        print('WARNING: Running knockknock-daemon without any active profiles.')
+        print("WARNING: Running knockknock-daemon without any active profiles.")
 
     knockknock.daemonize.createDaemon()
 
@@ -111,11 +110,11 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     if pid:
         os.close(input_fd)
-        handleKnocks(os.fdopen(output_fd, 'w'), profiles, config)
+        handleKnocks(os.fdopen(output_fd, "w"), profiles, config)
     else:
         os.close(output_fd)
-        handleFirewall(os.fdopen(input_fd, 'r'), config)
+        handleFirewall(os.fdopen(input_fd, "r"), config)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main(sys.argv[1:])

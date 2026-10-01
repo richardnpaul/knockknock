@@ -24,6 +24,8 @@ dev = [
     "flake8>=7.0.0",
     "mypy>=1.10.0",
     "build>=1.2.0",
+    "ruff>=0.6.0",
+    "pre-commit>=4.0.0",
 ]
 
 [tool.setuptools]
@@ -47,6 +49,40 @@ core = "ctrace"
 show_missing = true
 precision = 2
 fail_under = 100
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    ".git",
+    ".agents",
+    "cov_annotate",
+    "build",
+    "dist",
+    "*.egg-info",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "UP007",  # X | Y union syntax — keep Optional[] for py3.10 compat clarity
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = false
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
 
 [tool.mypy]
 python_version = "3.14"

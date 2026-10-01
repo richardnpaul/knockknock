@@ -1,21 +1,22 @@
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 import knockknock.daemonize as daemonize
 
 
 class TestDaemonize:
-
     def test_create_daemon_success(self):
-        with patch("os.fork", side_effect=[0, 0]), \
-             patch("os._exit") as mock_exit, \
-             patch("os.setsid") as mock_setsid, \
-             patch("os.chdir") as mock_chdir, \
-             patch("os.umask") as mock_umask, \
-             patch("os.open", return_value=0) as mock_open, \
-             patch("os.dup2") as mock_dup2:
-
+        with (
+            patch("os.fork", side_effect=[0, 0]),
+            patch("os._exit") as mock_exit,
+            patch("os.setsid") as mock_setsid,
+            patch("os.chdir") as mock_chdir,
+            patch("os.umask") as mock_umask,
+            patch("os.open", return_value=0) as mock_open,
+            patch("os.dup2") as mock_dup2,
+        ):
             ret = daemonize.createDaemon()
 
             assert ret == 0
@@ -29,10 +30,7 @@ class TestDaemonize:
             mock_dup2.assert_any_call(0, 2)
 
     def test_first_fork_parent_exits(self):
-        with patch("os.fork", return_value=1), \
-             patch("os._exit") as mock_exit, \
-             patch("os.setsid") as mock_setsid:
-
+        with patch("os.fork", return_value=1), patch("os._exit") as mock_exit, patch("os.setsid") as mock_setsid:
             daemonize.createDaemon()
             mock_exit.assert_called_once_with(0)
             mock_setsid.assert_not_called()
@@ -44,47 +42,40 @@ class TestDaemonize:
                 daemonize.createDaemon()
 
     def test_second_fork_parent_exits(self):
-        with patch("os.fork", side_effect=[0, 1]), \
-             patch("os.setsid") as mock_setsid, \
-             patch("os.chdir") as mock_chdir, \
-             patch("os._exit") as mock_exit:
-
+        with (
+            patch("os.fork", side_effect=[0, 1]),
+            patch("os.setsid") as mock_setsid,
+            patch("os.chdir") as mock_chdir,
+            patch("os._exit") as mock_exit,
+        ):
             daemonize.createDaemon()
             mock_setsid.assert_called_once()
             mock_exit.assert_called_once_with(0)
             mock_chdir.assert_not_called()
 
-
     def test_second_fork_error_raises_exception(self):
         err = OSError(12, "Cannot allocate memory")
-        with patch("os.fork", side_effect=[0, err]), \
-             patch("os.setsid"):
-
+        with patch("os.fork", side_effect=[0, err]), patch("os.setsid"):
             with pytest.raises(Exception, match=r"Cannot allocate memory \[12\]"):
                 daemonize.createDaemon()
 
     def test_first_fork_negative_pid_exits(self) -> None:
         """Fork returning -1 takes the parent/else path (kills boundary -1 shift on pid == 0)."""
-        with patch("os.fork", return_value=-1), \
-             patch("os._exit") as mock_exit, \
-             patch("os.setsid") as mock_setsid:
-
+        with patch("os.fork", return_value=-1), patch("os._exit") as mock_exit, patch("os.setsid") as mock_setsid:
             daemonize.createDaemon()
             mock_exit.assert_called_once_with(0)
             mock_setsid.assert_not_called()
 
     def test_first_fork_large_pid_exits(self) -> None:
         """Fork returning 2 takes the parent/else path (kills boundary +1 shift on pid == 0)."""
-        with patch("os.fork", return_value=2), \
-             patch("os._exit") as mock_exit, \
-             patch("os.setsid") as mock_setsid:
-
+        with patch("os.fork", return_value=2), patch("os._exit") as mock_exit, patch("os.setsid") as mock_setsid:
             daemonize.createDaemon()
             mock_exit.assert_called_once_with(0)
             mock_setsid.assert_not_called()
 
     def test_devnull_fallback(self) -> None:
         import importlib
+
         original_devnull = getattr(os, "devnull", None)
         try:
             if hasattr(os, "devnull"):
@@ -95,5 +86,3 @@ class TestDaemonize:
             if original_devnull is not None:
                 os.devnull = original_devnull
             importlib.reload(daemonize)
-
-

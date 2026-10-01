@@ -1,12 +1,10 @@
 import os
-import pytest
 from unittest.mock import patch
 
 from knockknock.Profiles import Profiles
 
 
 class TestProfiles:
-
     def test_load_profiles_from_directory(self, sample_profiles_dir):
         # Add a regular file to ensure Profiles ignores non-directories
         with open(os.path.join(sample_profiles_dir, "ignore_me.txt"), "w") as f:

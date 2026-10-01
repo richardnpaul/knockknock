@@ -2,6 +2,7 @@
 """Captures raw TCP packets on eth0 and appends kernel-formatted log lines to /var/log/kern.log.
 This ensures knockknock-daemon receives iptables-compatible logs even in restricted container environments.
 """
+
 import os
 import socket
 import struct
@@ -9,6 +10,7 @@ import sys
 import time
 
 LOG_PATH = "/var/log/kern.log"
+
 
 def main():
     os.makedirs(os.path.dirname(LOG_PATH), exist_ok=True)
@@ -41,9 +43,7 @@ def main():
             dst_ip = socket.inet_ntoa(ip_header[16:20])
 
             tcp_header = ip_header[ihl:]
-            src_port, dst_port, seq_val, ack_val, _, win_val = struct.unpack(
-                "!HHIIHH", tcp_header[:16]
-            )
+            src_port, dst_port, seq_val, ack_val, _, win_val = struct.unpack("!HHIIHH", tcp_header[:16])
 
             log_line = (
                 f"Oct  1 12:00:00 server kernel: IN=eth0 OUT= "

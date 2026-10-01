@@ -1,14 +1,15 @@
 import asyncio
+from collections.abc import Callable
 from struct import pack
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Union
 
 from knockknock.Profiles import Profiles
+
 from .EndpointConnection import EndpointConnection
 from .KnockingEndpointConnection import KnockingEndpointConnection
 
 
 class SocksRequestHandler:
-
     INITIAL_HEADER_LEN = 2
     REQUEST_HEADER_LEN = 4
 
@@ -16,11 +17,11 @@ class SocksRequestHandler:
         self,
         reader_or_sock: Any = None,
         writer_or_profiles: Any = None,
-        profiles: Optional[Profiles] = None,
+        profiles: Profiles | None = None,
     ) -> None:
         if profiles is not None:
-            self.reader: Optional[asyncio.StreamReader] = reader_or_sock
-            self.writer: Optional[asyncio.StreamWriter] = writer_or_profiles
+            self.reader: asyncio.StreamReader | None = reader_or_sock
+            self.writer: asyncio.StreamWriter | None = writer_or_profiles
             self.profiles: Profiles = profiles
         else:
             self.reader = None
@@ -33,11 +34,11 @@ class SocksRequestHandler:
         self.address = ""
         self.port = 0
         self.rawAddressAndPort: Any = None
-        self.endpoint: Optional[EndpointConnection] = None
+        self.endpoint: EndpointConnection | None = None
         self.closed = False
-        self.terminator: Optional[int] = self.INITIAL_HEADER_LEN
+        self.terminator: int | None = self.INITIAL_HEADER_LEN
 
-        self.stateMachine: Dict[int, Callable[[], Optional[int]]] = {
+        self.stateMachine: dict[int, Callable[[], int | None]] = {
             0: self.processHeaders,
             1: self.processAuthenticationMethod,
             2: self.processRequestHeader,
@@ -45,11 +46,11 @@ class SocksRequestHandler:
             4: self._state_processAddressAndPort,
         }
 
-    def _state_processAddressAndPort(self) -> Optional[int]:
+    def _state_processAddressAndPort(self) -> int | None:
         self.processAddressAndPort()
         return None
 
-    def set_terminator(self, terminator: Optional[int]) -> None:
+    def set_terminator(self, terminator: int | None) -> None:
         self.terminator = terminator
 
     def _byte(self, val: Union[int, str, bytes, bytearray]) -> int:
@@ -64,7 +65,7 @@ class SocksRequestHandler:
         quad = localIP.split(".")
         for segment in quad:
             response = response + bytes([int(segment)])
-        response = response + pack('!H', int(localPort))
+        response = response + pack("!H", int(localPort))
         self.push(response)
 
     def sendCommandNotSupportedResponse(self) -> None:
@@ -103,7 +104,7 @@ class SocksRequestHandler:
         else:
             addr_bytes = self.input[0:-2]
             self.address = (
-                addr_bytes.decode('utf-8', errors='replace')
+                addr_bytes.decode("utf-8", errors="replace")
                 if isinstance(addr_bytes, (bytes, bytearray))
                 else str(addr_bytes)
             )
@@ -117,7 +118,7 @@ class SocksRequestHandler:
         addressLength = self._byte(self.input[0]) + 2
         return addressLength
 
-    def processRequestHeader(self) -> Optional[int]:
+    def processRequestHeader(self) -> int | None:
         command = self._byte(self.input[1])
         self.addressType = self._byte(self.input[3])
 
@@ -136,7 +137,7 @@ class SocksRequestHandler:
             self.handle_close()
             return None
 
-    def processAuthenticationMethod(self) -> Optional[int]:
+    def processAuthenticationMethod(self) -> int | None:
         for method in self.input:
             if self._byte(method) == 0:
                 self.sendAuthenticationResponse(0x00)
@@ -146,7 +147,7 @@ class SocksRequestHandler:
         self.handle_close()
         return None
 
-    def processHeaders(self) -> Optional[int]:
+    def processHeaders(self) -> int | None:
         socksVersion = self._byte(self.input[0])
         methodCount = self._byte(self.input[1])
 
@@ -237,16 +238,10 @@ class SocksRequestHandler:
         assert self.endpoint is not None
         assert self.endpoint.reader is not None
 
-        c2e = asyncio.create_task(
-            self._copy_stream(self.reader, self.endpoint.write, self._endpoint_drain)
-        )
-        e2c = asyncio.create_task(
-            self._copy_stream(self.endpoint.reader, self.push, self._drain_writer)
-        )
+        c2e = asyncio.create_task(self._copy_stream(self.reader, self.endpoint.write, self._endpoint_drain))
+        e2c = asyncio.create_task(self._copy_stream(self.endpoint.reader, self.push, self._drain_writer))
 
-        _, pending = await asyncio.wait(
-            [c2e, e2c], return_when=asyncio.FIRST_COMPLETED
-        )
+        _, pending = await asyncio.wait([c2e, e2c], return_when=asyncio.FIRST_COMPLETED)
         for task in pending:
             task.cancel()
         await asyncio.gather(*pending, return_exceptions=True)

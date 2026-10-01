@@ -12,10 +12,7 @@ def calculate_checksum(data: bytes) -> int:
     if len(data) & 1:
         data += b"\x00"
 
-    checksum = sum(
-        int.from_bytes(data[i:i + 2], "big")
-        for i in range(0, len(data), 2)
-    )
+    checksum = sum(int.from_bytes(data[i : i + 2], "big") for i in range(0, len(data), 2))
 
     while checksum >> 16:
         checksum = (checksum & 0xFFFF) + (checksum >> 16)
@@ -49,11 +46,7 @@ def build_ip_header(src: str, dst: str, ip_id: int, payload_len: int) -> bytes:
     )
 
     chk = calculate_checksum(header_without_checksum)
-    return (
-        header_without_checksum[:10]
-        + struct.pack("!H", chk)
-        + header_without_checksum[12:]
-    )
+    return header_without_checksum[:10] + struct.pack("!H", chk) + header_without_checksum[12:]
 
 
 def build_tcp_header(
@@ -95,11 +88,7 @@ def build_tcp_header(
     )
 
     chk = calculate_checksum(pseudo_header + tcp_header_no_checksum)
-    return (
-        tcp_header_no_checksum[:16]
-        + struct.pack("!H", chk)
-        + tcp_header_no_checksum[18:]
-    )
+    return tcp_header_no_checksum[:16] + struct.pack("!H", chk) + tcp_header_no_checksum[18:]
 
 
 def get_egress_ip(dst_ip: str) -> str:
@@ -131,9 +120,7 @@ def send_syn(
     src_ip = get_egress_ip(dst_ip)
     src_port = random.randint(1024, 65535)
 
-    tcp_header = build_tcp_header(
-        src_ip, dst_ip, src_port, knock_port, seq, ack, window
-    )
+    tcp_header = build_tcp_header(src_ip, dst_ip, src_port, knock_port, seq, ack, window)
     ip_header = build_ip_header(src_ip, dst_ip, ip_id, len(tcp_header))
     packet = ip_header + tcp_header
 

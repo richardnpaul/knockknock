@@ -8,7 +8,6 @@ from knockknock.proxy.KnockingEndpointConnection import KnockingEndpointConnecti
 
 
 class TestEndpointConnection(unittest.TestCase):
-
     def setUp(self):
         self.mock_shuttle = MagicMock()
         self.conn = EndpointConnection(self.mock_shuttle, "127.0.0.1", 8080)
@@ -150,7 +149,6 @@ class TestEndpointConnection(unittest.TestCase):
 
 
 class TestKnockingEndpointConnection(unittest.TestCase):
-
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
     @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
     def test_init_and_send_knock(self, mock_send_syn, mock_sleep):
@@ -160,15 +158,11 @@ class TestKnockingEndpointConnection(unittest.TestCase):
         encrypted_bytes = struct.pack("!HIIH", 100, 200000, 300000, 4096)
         mock_profile.encrypt.return_value = encrypted_bytes
 
-        knocking_conn = KnockingEndpointConnection(
-            mock_shuttle, mock_profile, "192.168.1.200", 80
-        )
+        knocking_conn = KnockingEndpointConnection(mock_shuttle, mock_profile, "192.168.1.200", 80)
 
         mock_profile.encrypt.assert_called_once_with(struct.pack("!H", 80))
         mock_profile.getKnockPort.assert_called_once()
-        mock_send_syn.assert_called_once_with(
-            "192.168.1.200", 22, 100, 200000, 300000, 4096
-        )
+        mock_send_syn.assert_called_once_with("192.168.1.200", 22, 100, 200000, 300000, 4096)
         mock_sleep.assert_called_once_with(0.25)
 
         self.assertEqual(knocking_conn.host, "192.168.1.200")
@@ -211,9 +205,7 @@ class TestKnockingEndpointConnection(unittest.TestCase):
         mock_profile.getKnockPort.return_value = 22
         mock_profile.encrypt.return_value = struct.pack("!HIIH", 1, 2, 3, 4)
 
-        knocking_conn = KnockingEndpointConnection(
-            mock_shuttle, mock_profile, "10.0.0.5", 443
-        )
+        knocking_conn = KnockingEndpointConnection(mock_shuttle, mock_profile, "10.0.0.5", 443)
         self.assertEqual(mock_profile.encrypt.call_count, 1)
 
         knocking_conn.reconnect()
@@ -228,9 +220,7 @@ class TestKnockingEndpointConnection(unittest.TestCase):
         mock_profile.getKnockPort.return_value = 22
         mock_profile.encrypt.return_value = struct.pack("!HIIH", 1, 2, 3, 4)
 
-        knocking_conn = KnockingEndpointConnection(
-            mock_shuttle, mock_profile, "10.0.0.5", 443
-        )
+        knocking_conn = KnockingEndpointConnection(mock_shuttle, mock_profile, "10.0.0.5", 443)
         self.assertEqual(mock_profile.encrypt.call_count, 1)
 
         knocking_conn.reconnect_hook()

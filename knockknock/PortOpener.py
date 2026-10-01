@@ -2,16 +2,16 @@ import os
 import shutil
 import subprocess
 import syslog
-from typing import Any, Callable, Optional, Union
+from collections.abc import Callable
+from typing import Any, Union
 
 
 class PortOpener:
-
     def __init__(
         self,
         stream: Any,
         openDuration: Union[int, float],
-        on_exit: Optional[Callable[[], None]] = None,
+        on_exit: Callable[[], None] | None = None,
     ) -> None:
         self.stream = stream
         self.openDuration: Union[int, float] = openDuration

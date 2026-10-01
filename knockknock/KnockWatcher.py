@@ -6,7 +6,6 @@ from .MacFailedException import MacFailedException
 
 
 class KnockWatcher:
-
     def __init__(self, config: Any, logFile: Any, profiles: Any, portOpener: Any) -> None:
         self.config = config
         self.logFile = logFile
@@ -26,12 +25,7 @@ class KnockWatcher:
                         sourceIP = logEntry.getSourceIP()
 
                         self.portOpener.open(sourceIP, port)
-                        syslog.syslog(
-                            "Received authenticated port-knock for port "
-                            + str(port)
-                            + " from "
-                            + sourceIP
-                        )
+                        syslog.syslog("Received authenticated port-knock for port " + str(port) + " from " + sourceIP)
                     except MacFailedException:
                         pass
             except Exception:

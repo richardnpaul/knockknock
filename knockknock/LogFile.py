@@ -1,11 +1,11 @@
 import os
-from pathlib import Path
 import time
-from typing import IO, Iterator, Union
+from collections.abc import Iterator
+from pathlib import Path
+from typing import IO, Union
 
 
 class LogFile:
-
     def __init__(self, file: Union[str, Path]) -> None:
         self.file: str = str(file)
 
@@ -29,7 +29,7 @@ class LogFile:
             line = fd.readline()
 
             if not line:
-                time.sleep(.25)
+                time.sleep(0.25)
                 fd.seek(where)
             else:
                 yield line

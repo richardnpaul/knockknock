@@ -1,28 +1,27 @@
 import binascii
 import configparser
 import os
-from pathlib import Path
 import stat
-from typing import IO, Any, List, Optional, Union
+from pathlib import Path
+from typing import IO, Union
 
 from .CryptoEngine import CryptoEngine
 
 
 class Profile:
-
     def __init__(
         self,
         directory: Union[str, Path],
-        cipherKey: Optional[bytes] = None,
-        macKey: Optional[bytes] = None,
-        counter: Optional[int] = None,
-        knockPort: Optional[Union[int, str]] = None,
+        cipherKey: bytes | None = None,
+        macKey: bytes | None = None,
+        counter: int | None = None,
+        knockPort: Union[int, str] | None = None,
     ) -> None:
-        self.counterFile: Optional[IO[str]] = None
+        self.counterFile: IO[str] | None = None
         self.path: Path = Path(directory)
-        self.directory: str = str(self.path).rstrip('/')
+        self.directory: str = str(self.path).rstrip("/")
         self.name: str = self.path.name
-        self.ipAddressList: List[str] = []
+        self.ipAddressList: list[str] = []
 
         if cipherKey is None:
             self.deserialize()
@@ -48,10 +47,10 @@ class Profile:
 
     # Getters And Setters
 
-    def getIPAddrs(self) -> List[str]:
+    def getIPAddrs(self) -> list[str]:
         return self.ipAddressList
 
-    def setIPAddrs(self, ipAddressList: List[str]) -> None:
+    def setIPAddrs(self, ipAddressList: list[str]) -> None:
         self.ipAddressList = ipAddressList
 
     def getName(self) -> str:
@@ -85,7 +84,7 @@ class Profile:
     def loadCounter(self) -> int:
         # Privsep bullshit...
         if self.counterFile is None:
-            self.counterFile = open(self.path / "counter", 'r+')
+            self.counterFile = open(self.path / "counter", "r+")
 
         self.counterFile.seek(0)
         counter = self.counterFile.readline()
@@ -97,10 +96,10 @@ class Profile:
         config = configparser.ConfigParser()
         config.read(self.path / "config")
 
-        return config.get('main', 'knock_port')
+        return config.get("main", "knock_port")
 
     def loadKey(self, keyFile: Union[str, Path]) -> bytes:
-        with open(keyFile, 'rb') as f:
+        with open(keyFile, "rb") as f:
             key = binascii.a2b_base64(f.readline())
         return key
 
@@ -113,8 +112,8 @@ class Profile:
     def storeCounter(self) -> None:
         # Privsep bullshit...
         if self.counterFile is None:
-            self.counterFile = open(self.path / 'counter', 'w')
-            self.setPermissions(self.path / 'counter')
+            self.counterFile = open(self.path / "counter", "w")
+            self.setPermissions(self.path / "counter")
 
         self.counterFile.seek(0)
         self.counterFile.write(str(self.counter) + "\n")
@@ -122,17 +121,17 @@ class Profile:
 
     def storeConfig(self) -> None:
         config = configparser.ConfigParser()
-        config.add_section('main')
-        config.set('main', 'knock_port', str(self.knockPort))
+        config.add_section("main")
+        config.set("main", "knock_port", str(self.knockPort))
 
         config_path = self.path / "config"
-        with open(config_path, 'w') as configFile:
+        with open(config_path, "w") as configFile:
             config.write(configFile)
 
         self.setPermissions(config_path)
 
     def storeKey(self, key: bytes, path: Union[str, Path]) -> None:
-        with open(path, 'wb') as f:
+        with open(path, "wb") as f:
             f.write(binascii.b2a_base64(key))
 
         self.setPermissions(path)

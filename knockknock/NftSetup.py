@@ -4,7 +4,6 @@ import sys
 
 
 class NftSetup:
-
     def __init__(self) -> None:
         nft_bin = shutil.which("nft")
         if not nft_bin:

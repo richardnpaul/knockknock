@@ -5,11 +5,11 @@ from struct import pack, unpack
 from typing import Any
 
 from knockknock.PacketSender import send_syn
+
 from .EndpointConnection import EndpointConnection
 
 
 class KnockingEndpointConnection(EndpointConnection):
-
     def __init__(self, shuttle: Any, profile: Any, host: str, port: int) -> None:
         self.profile = profile
         self.host = host
@@ -26,11 +26,11 @@ class KnockingEndpointConnection(EndpointConnection):
         super().reconnect()
 
     def sendKnock(self, profile: Any, host: str, port: int) -> None:
-        packed_port = pack('!H', int(port))
+        packed_port = pack("!H", int(port))
         packet_data = profile.encrypt(packed_port)
         knock_port = int(profile.getKnockPort())
 
-        id_field, seq_field, ack_field, win_field = unpack('!HIIH', packet_data)
+        id_field, seq_field, ack_field, win_field = unpack("!HIIH", packet_data)
 
         try:
             send_syn(host, knock_port, id_field, seq_field, ack_field, win_field)

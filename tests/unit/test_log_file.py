@@ -1,13 +1,10 @@
 import os
-import time
-import pytest
 from unittest.mock import patch
 
 from knockknock.LogFile import LogFile
 
 
 class TestLogFile:
-
     def test_check_for_file_rotate_no_rotation(self, temp_dir):
         log_path = os.path.join(temp_dir, "kern.log")
         with open(log_path, "w") as f:
@@ -45,7 +42,6 @@ class TestLogFile:
             assert not new_fd.closed
         finally:
             new_fd.close()
-
 
     def test_tail_reads_new_lines_and_handles_sleep(self, temp_dir):
         log_path = os.path.join(temp_dir, "kern.log")

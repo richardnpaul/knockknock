@@ -1,9 +1,9 @@
 import pytest
+
 from knockknock.PacketSender import calculate_checksum
 
 
 class TestPacketSenderChecksum:
-
     def test_calculate_checksum_known_rfc1071_vector(self) -> None:
         # RFC 1071 example: 0x0001 + 0xf203 + 0xf4f5 + 0xf6f7
         data = b"\x00\x01\xf2\x03\xf4\xf5\xf6\xf7"
@@ -24,7 +24,6 @@ class TestPacketSenderChecksum:
 
 
 class TestPacketSenderIPHeader:
-
     def test_build_ip_header_structure_and_checksum(self) -> None:
         from knockknock.PacketSender import build_ip_header
 
@@ -58,10 +57,10 @@ class TestPacketSenderIPHeader:
 
 
 class TestPacketSenderTCPHeader:
-
     def test_build_tcp_header_structure_and_checksum(self) -> None:
         import socket
         import struct
+
         from knockknock.PacketSender import build_tcp_header
 
         src_ip = "192.168.1.100"
@@ -72,9 +71,7 @@ class TestPacketSenderTCPHeader:
         ack = 0x55667788
         window = 0x1000
 
-        header = build_tcp_header(
-            src_ip, dst_ip, src_port, dst_port, seq, ack, window
-        )
+        header = build_tcp_header(src_ip, dst_ip, src_port, dst_port, seq, ack, window)
 
         assert len(header) == 20
         # Bytes 0-1: src_port
@@ -111,10 +108,10 @@ class TestPacketSenderTCPHeader:
 
 
 class TestPacketSenderEgressIP:
-
     def test_get_egress_ip(self) -> None:
-        from unittest.mock import MagicMock, patch
         import socket
+        from unittest.mock import MagicMock, patch
+
         from knockknock.PacketSender import get_egress_ip
 
         mock_socket = MagicMock()
@@ -123,15 +120,12 @@ class TestPacketSenderEgressIP:
         with patch("socket.socket", return_value=mock_socket) as mock_socket_cls:
             ip = get_egress_ip("8.8.8.8")
             assert ip == "192.168.1.42"
-            mock_socket_cls.assert_called_once_with(
-                socket.AF_INET, socket.SOCK_DGRAM
-            )
+            mock_socket_cls.assert_called_once_with(socket.AF_INET, socket.SOCK_DGRAM)
             mock_socket.connect.assert_called_once_with(("8.8.8.8", 80))
             mock_socket.close.assert_called_once()
 
 
 class TestPacketSenderSendSyn:
-
     @pytest.mark.parametrize(
         "port,ip_id,seq,ack,window",
         [
@@ -147,41 +141,33 @@ class TestPacketSenderSendSyn:
             (80, 100, 100, 100, 65536),  # window > 65535
         ],
     )
-    def test_send_syn_validates_bounds(
-        self, port: int, ip_id: int, seq: int, ack: int, window: int
-    ) -> None:
+    def test_send_syn_validates_bounds(self, port: int, ip_id: int, seq: int, ack: int, window: int) -> None:
         from knockknock.PacketSender import send_syn
 
         with pytest.raises(ValueError):
             send_syn("192.168.1.1", port, ip_id, seq, ack, window)
 
     def test_send_syn_success_flow(self) -> None:
-        from unittest.mock import MagicMock, patch
         import socket
+        from unittest.mock import MagicMock, patch
+
         from knockknock.PacketSender import send_syn
 
         mock_raw_sock = MagicMock()
 
-        with patch("socket.getaddrinfo") as mock_getaddrinfo, \
-             patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"), \
-             patch("random.randint", return_value=45678), \
-             patch("socket.socket", return_value=mock_raw_sock) as mock_sock_cls:
-
-            mock_getaddrinfo.return_value = [
-                (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 80))
-            ]
+        with (
+            patch("socket.getaddrinfo") as mock_getaddrinfo,
+            patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"),
+            patch("random.randint", return_value=45678),
+            patch("socket.socket", return_value=mock_raw_sock) as mock_sock_cls,
+        ):
+            mock_getaddrinfo.return_value = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 80))]
 
             send_syn("example.com", 80, 1234, 56789, 98765, 4096)
 
-            mock_getaddrinfo.assert_called_once_with(
-                "example.com", 80, socket.AF_INET
-            )
-            mock_sock_cls.assert_called_once_with(
-                socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP
-            )
-            mock_raw_sock.setsockopt.assert_called_once_with(
-                socket.IPPROTO_IP, socket.IP_HDRINCL, 1
-            )
+            mock_getaddrinfo.assert_called_once_with("example.com", 80, socket.AF_INET)
+            mock_sock_cls.assert_called_once_with(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)
+            mock_raw_sock.setsockopt.assert_called_once_with(socket.IPPROTO_IP, socket.IP_HDRINCL, 1)
             assert mock_raw_sock.sendto.call_count == 1
             sent_data, dest_addr = mock_raw_sock.sendto.call_args[0]
             assert len(sent_data) == 40  # 20 IP + 20 TCP
@@ -189,17 +175,19 @@ class TestPacketSenderSendSyn:
             mock_raw_sock.close.assert_called_once()
 
     def test_send_syn_propagates_permission_error_and_closes(self) -> None:
-        from unittest.mock import MagicMock, patch
         import socket
+        from unittest.mock import MagicMock, patch
+
         from knockknock.PacketSender import send_syn
 
         mock_raw_sock = MagicMock()
         mock_raw_sock.setsockopt.side_effect = PermissionError("Operation not permitted")
 
-        with patch("socket.getaddrinfo", return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 80))]), \
-             patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"), \
-             patch("socket.socket", return_value=mock_raw_sock):
-
+        with (
+            patch("socket.getaddrinfo", return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", 80))]),
+            patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"),
+            patch("socket.socket", return_value=mock_raw_sock),
+        ):
             with pytest.raises(PermissionError):
                 send_syn("10.0.0.2", 80, 1234, 5678, 9012, 1024)
 
@@ -212,38 +200,41 @@ class TestPacketSenderSendSyn:
             (65535, 65535, 4294967295, 4294967295, 65535),  # Max bounds
         ],
     )
-    def test_send_syn_valid_boundaries(
-        self, port: int, ip_id: int, seq: int, ack: int, window: int
-    ) -> None:
-        from unittest.mock import MagicMock, patch
+    def test_send_syn_valid_boundaries(self, port: int, ip_id: int, seq: int, ack: int, window: int) -> None:
         import socket
+        from unittest.mock import MagicMock, patch
+
         from knockknock.PacketSender import send_syn
 
         mock_raw_sock = MagicMock()
-        with patch("socket.getaddrinfo", return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", port))]), \
-             patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"), \
-             patch("socket.socket", return_value=mock_raw_sock):
-
+        with (
+            patch("socket.getaddrinfo", return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.2", port))]),
+            patch("knockknock.PacketSender.get_egress_ip", return_value="10.0.0.1"),
+            patch("socket.socket", return_value=mock_raw_sock),
+        ):
             send_syn("10.0.0.2", port, ip_id, seq, ack, window)
             assert mock_raw_sock.sendto.call_count == 1
 
 
 class TestValidateRange:
-
     def test_validate_range_below_min(self) -> None:
         from knockknock.PacketSender import _validate_range
+
         with pytest.raises(ValueError, match="Invalid test_val: 4"):
             _validate_range("test_val", 4, 5, 10)
 
     def test_validate_range_at_min(self) -> None:
         from knockknock.PacketSender import _validate_range
+
         _validate_range("test_val", 5, 5, 10)
 
     def test_validate_range_at_max(self) -> None:
         from knockknock.PacketSender import _validate_range
+
         _validate_range("test_val", 10, 5, 10)
 
     def test_validate_range_above_max(self) -> None:
         from knockknock.PacketSender import _validate_range
+
         with pytest.raises(ValueError, match="Invalid test_val: 11"):
             _validate_range("test_val", 11, 5, 10)
