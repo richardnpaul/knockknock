@@ -39,6 +39,9 @@ addopts = "-ra -v"
 [tool.coverage.run]
 source = ["knockknock"]
 branch = true
+core = "ctrace"
+
+
 
 [tool.coverage.report]
 show_missing = true

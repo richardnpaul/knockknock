@@ -1,6 +1,6 @@
 import os
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import knockknock.daemonize as daemonize
 
@@ -63,7 +63,27 @@ class TestDaemonize:
             with pytest.raises(Exception, match=r"Cannot allocate memory \[12\]"):
                 daemonize.createDaemon()
 
-    def test_devnull_fallback(self):
+    def test_first_fork_negative_pid_exits(self) -> None:
+        """Fork returning -1 takes the parent/else path (kills boundary -1 shift on pid == 0)."""
+        with patch("os.fork", return_value=-1), \
+             patch("os._exit") as mock_exit, \
+             patch("os.setsid") as mock_setsid:
+
+            daemonize.createDaemon()
+            mock_exit.assert_called_once_with(0)
+            mock_setsid.assert_not_called()
+
+    def test_first_fork_large_pid_exits(self) -> None:
+        """Fork returning 2 takes the parent/else path (kills boundary +1 shift on pid == 0)."""
+        with patch("os.fork", return_value=2), \
+             patch("os._exit") as mock_exit, \
+             patch("os.setsid") as mock_setsid:
+
+            daemonize.createDaemon()
+            mock_exit.assert_called_once_with(0)
+            mock_setsid.assert_not_called()
+
+    def test_devnull_fallback(self) -> None:
         import importlib
         original_devnull = getattr(os, "devnull", None)
         try:
@@ -75,4 +95,5 @@ class TestDaemonize:
             if original_devnull is not None:
                 os.devnull = original_devnull
             importlib.reload(daemonize)
+
 

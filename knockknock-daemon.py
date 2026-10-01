@@ -6,12 +6,14 @@ import grp
 import os
 from pathlib import Path
 import pwd
+import signal
 import sys
-from typing import IO, List, NoReturn, Optional
+from typing import IO, Any, List, NoReturn, Optional
 
 from knockknock.DaemonConfiguration import DaemonConfiguration
 from knockknock.KnockWatcher import KnockWatcher
 from knockknock.LogFile import LogFile
+from knockknock.NftSetup import NftSetup
 from knockknock.PortOpener import PortOpener
 from knockknock.Profiles import Profiles
 import knockknock.daemonize
@@ -57,8 +59,21 @@ def dropPrivileges() -> None:
 
 
 def handleFirewall(input_stream: IO[str], config: DaemonConfiguration) -> None:
-    portOpener = PortOpener(input_stream, config.getDelay())
-    portOpener.waitForRequests()
+    nft_setup = NftSetup()
+    nft_setup.initialise()
+
+    def teardown_handler(signum: int, frame: Any) -> None:
+        nft_setup.teardown()
+        os._exit(0)
+
+    signal.signal(signal.SIGTERM, teardown_handler)
+    signal.signal(signal.SIGINT, teardown_handler)
+
+    try:
+        portOpener = PortOpener(input_stream, config.getDelay(), on_exit=nft_setup.teardown)
+        portOpener.waitForRequests()
+    finally:
+        nft_setup.teardown()
 
 
 def handleKnocks(output_stream: IO[str], profiles: Profiles, config: DaemonConfiguration) -> None:

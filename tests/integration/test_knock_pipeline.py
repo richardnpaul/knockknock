@@ -72,9 +72,8 @@ class TestKnockPipelineIntegration(unittest.TestCase):
         )
 
     @patch("knockknock.PortOpener.subprocess.call")
-    @patch("knockknock.PortOpener.RuleTimer")
     def test_full_knock_pipeline_opens_port_and_advances_counter(
-        self, mock_timer_cls, mock_subprocess_call
+        self, mock_subprocess_call
     ):
         mock_subprocess_call.return_value = 0
 
@@ -119,36 +118,18 @@ class TestKnockPipelineIntegration(unittest.TestCase):
             except SystemExit:
                 pass
 
-        # 4. Verify iptables command executed
-        expected_iptables_cmd = [
-            "iptables",
-            "-I",
-            "INPUT",
-            "-m",
-            "limit",
-            "--limit",
-            "1/minute",
-            "--limit-burst",
-            "1",
-            "-m",
-            "state",
-            "--state",
-            "NEW",
-            "-p",
-            "tcp",
-            "-s",
-            src_ip,
-            "--dport",
-            str(target_port),
-            "-j",
-            "ACCEPT",
+        # 4. Verify nftables command executed
+        expected_nft_cmd = [
+            receiver_port_opener.nft_path,
+            "add",
+            "element",
+            "inet",
+            "knockknock",
+            "open_ports",
+            f"{{ {src_ip} . {target_port} timeout {self.config.getDelay()}s }}",
         ]
         mock_subprocess_call.assert_called_once_with(
-            expected_iptables_cmd, shell=False
-        )
-        mock_timer_cls.assert_called_once_with(
-            self.config.getDelay(),
-            f"INPUT -m limit --limit 1/minute --limit-burst 1 -m state --state NEW -p tcp -s {src_ip} --dport {target_port} -j ACCEPT",
+            expected_nft_cmd, shell=False
         )
 
         # 5. Verify server counter advanced to 1

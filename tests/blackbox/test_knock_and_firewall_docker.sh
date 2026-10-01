@@ -59,7 +59,7 @@ if [ "$NEW_COUNTER" -lt 1 ]; then
 fi
 echo "Client counter successfully advanced to $NEW_COUNTER."
 
-# 5. Wait for RuleTimer to automatically close the port (delay is 3s)
+# 5. Wait for nftables set element timeout to automatically close the port (delay is 3s)
 echo "Waiting 4s for port opening rule to expire..."
 sleep 4
 

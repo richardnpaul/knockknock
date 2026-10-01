@@ -1,16 +1,50 @@
 import os
+import shutil
 import subprocess
 import syslog
-from typing import Any, Union
-
-from .RuleTimer import RuleTimer
+from typing import Any, Callable, Optional, Union
 
 
 class PortOpener:
 
-    def __init__(self, stream: Any, openDuration: Union[int, float]) -> None:
+    def __init__(
+        self,
+        stream: Any,
+        openDuration: Union[int, float],
+        on_exit: Optional[Callable[[], None]] = None,
+    ) -> None:
         self.stream = stream
         self.openDuration: Union[int, float] = openDuration
+        self.on_exit = on_exit
+        nft_bin = shutil.which("nft")
+        self.nft_path: str = nft_bin if nft_bin else "nft"
+
+    @staticmethod
+    def _is_valid_ipv4(ip: str) -> bool:
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return False
+        for part in parts:
+            if not part.isdigit():
+                return False
+            if str(int(part)) != part:
+                return False
+            if int(part) > 255:
+                return False
+        return True
+
+    @staticmethod
+    def _is_valid_port(port_str: str) -> bool:
+        if not port_str.isdigit():
+            return False
+        val = int(port_str)
+        return 1 <= val <= 65535
+
+    def _terminate(self, msg: str) -> None:
+        syslog.syslog(msg)
+        if self.on_exit is not None:
+            self.on_exit()
+        os._exit(4)
 
     def waitForRequests(self) -> None:
         while True:
@@ -18,23 +52,27 @@ class PortOpener:
             port = self.stream.readline().rstrip("\n")
 
             if sourceIP == "" or port == "":
-                syslog.syslog("knockknock.PortOpener: Parent process is closed.  Terminating.")
-                os._exit(4)
+                self._terminate("knockknock.PortOpener: Parent process is closed.  Terminating.")
 
-            description = (
-                'INPUT -m limit --limit 1/minute --limit-burst 1 '
-                '-m state --state NEW -p tcp -s '
-                + sourceIP
-                + ' --dport '
-                + str(port)
-                + ' -j ACCEPT'
-            )
-            command = 'iptables -I ' + description
-            command_list = command.split()
+            if not self._is_valid_ipv4(sourceIP):
+                self._terminate("knockknock.PortOpener: Invalid source IP received.  Terminating.")
+
+            if not self._is_valid_port(port):
+                self._terminate("knockknock.PortOpener: Invalid port received.  Terminating.")
+
+            duration = int(self.openDuration)
+            element = f"{{ {sourceIP} . {port} timeout {duration}s }}"
+            command_list = [
+                self.nft_path,
+                "add",
+                "element",
+                "inet",
+                "knockknock",
+                "open_ports",
+                element,
+            ]
 
             subprocess.call(command_list, shell=False)
-
-            RuleTimer(self.openDuration, description).start()
 
     def open(self, sourceIP: str, port: Union[int, str]) -> None:
         try:

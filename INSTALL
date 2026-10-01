@@ -2,7 +2,7 @@ Requirements:
 
     * Python >= 3.10 (apt-get install python3 python3-pip)
     * PyCryptodome >= 3.20.0 (pip install pycryptodome; installed automatically)
-    * iptables (server only -- apt-get install iptables)
+    * nftables (server only -- apt-get install nftables)
 
 Installing The Server:
 
@@ -23,8 +23,8 @@ Installing The Server:
     The main configuration options in '/etc/knockknock.d/config' are:
       - delay: Number of seconds the port remains open before auto-closing (default: 15)
       - error_window: Sliding counter window allowed for out-of-order/replayed knocks (default: 20)
-      - logfile: Path to iptables kernel log (default: /var/log/kern.log)
-      - interface: Network interface to apply iptables rules on (optional)
+      - logfile: Path to kernel firewall log (default: /var/log/kern.log)
+      - interface: Network interface to apply firewall rules on (optional)
 
 Configuring The Server:
 
@@ -59,7 +59,7 @@ Configuring The Server:
     knockknock-daemon forks into the background, drops root privileges to
     'nobody:adm', and tails the kernel log for authenticated knock packets.
     When a valid knock is detected, it communicates across an internal IPC pipe
-    to an isolated root helper that dynamically inserts and deletes iptables rules.
+    to an isolated root helper that dynamically manages nftables timed set elements.
 
 Configuring The Client:
 
@@ -87,34 +87,34 @@ Configuring The Server Firewall Rules:
     and have connection attempts to firewalled ports logged with TCP sequence
     and IP options to '/var/log/kern.log' (or your configured log file).
 
-    A sample script, 'minimal-firewall.sh', is included with knockknock.
-    It firewalls off incoming connections unless authenticated by a knock.
+    knockknock-daemon automatically manages a dedicated table ('inet knockknock')
+    using native timed set elements that expire automatically in the kernel.
 
-    Otherwise, configure your firewall rules generally as follows:
+    Configure your server's base firewall ruleset using nftables as follows:
 
-    1. Allow existing established connections and outgoing traffic:
+    1. Create the base filter table and chains:
 
-      * sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
-      * sudo iptables -A OUTPUT -m state --state NEW,RELATED,ESTABLISHED -j ACCEPT
-      * sudo iptables -A OUTPUT -j ACCEPT
+      * sudo nft add table inet filter
+      * sudo nft 'add chain inet filter input { type filter hook input priority filter; policy accept; }'
+      * sudo nft 'add chain inet filter REJECTLOG'
 
-    2. Create a logging and rejection chain named REJECTLOG:
+    2. Allow loopback and established connections:
 
-      * sudo iptables -N REJECTLOG
-      * sudo iptables -A REJECTLOG -j LOG --log-level debug \
-          --log-tcp-sequence --log-tcp-options --log-ip-options -m limit \
-          --limit 3/s --limit-burst 8 --log-prefix "REJECT "
-      * sudo iptables -A REJECTLOG -p tcp -j REJECT --reject-with tcp-reset
-      * sudo iptables -A REJECTLOG -j REJECT
+      * sudo nft add rule inet filter input iif "lo" accept
+      * sudo nft add rule inet filter input ct state established,related accept
 
-    3. Route protected and knock ports to REJECTLOG, allowing public ports:
+    3. Configure the REJECTLOG chain to log knocks and reject with TCP reset:
 
-      * sudo iptables -A INPUT -m state --state NEW -p tcp --dport 80 -j ACCEPT
-      * sudo iptables -A INPUT -j REJECTLOG
+      * sudo nft add rule inet filter REJECTLOG 'log prefix "REJECT " flags tcp sequence,options flags ip options'
+      * sudo nft add rule inet filter REJECTLOG reject with tcp reset
 
-    Note on modern distributions: On systems with nftables or systemd-journald,
-    ensure iptables-legacy is used if preferred, and ensure kernel messages from
-    iptables reach '/var/log/kern.log' (e.g. via rsyslog: 'kern.debug /var/log/kern.log').
+    4. Route knock ports and protected service ports to REJECTLOG, allowing public ports:
+
+      * sudo nft add rule inet filter input tcp dport 80 accept
+      * sudo nft add rule inet filter input tcp dport '{ <knockPort>, <protectedPort> }' jump REJECTLOG
+
+    Note on logging: Ensure kernel log messages reach '/var/log/kern.log'
+    (e.g. via rsyslog: 'kern.debug /var/log/kern.log' or systemd-journald).
 
 Using knockknock:
 
