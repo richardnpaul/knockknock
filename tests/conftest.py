@@ -1,11 +1,10 @@
 import os
 import shutil
 import tempfile
+
 import pytest
-from struct import pack
 
 from knockknock.Profile import Profile
-from knockknock.Profiles import Profiles
 
 
 @pytest.fixture
@@ -26,13 +25,7 @@ def temp_dir():
 def sample_profile(temp_dir, sample_keys):
     """Provide a serialized Profile instance in a temporary directory."""
     cipher_key, mac_key = sample_keys
-    profile = Profile(
-        directory=temp_dir,
-        cipherKey=cipher_key,
-        macKey=mac_key,
-        counter=0,
-        knockPort=7000
-    )
+    profile = Profile(directory=temp_dir, cipherKey=cipher_key, macKey=mac_key, counter=0, knockPort=7000)
     profile.serialize()
     return profile
 
@@ -44,13 +37,7 @@ def sample_profiles_dir(temp_dir, sample_keys):
     for name, port in [("host-a", 7001), ("host-b", 7002)]:
         profile_path = os.path.join(temp_dir, name)
         os.makedirs(profile_path, exist_ok=True)
-        p = Profile(
-            directory=profile_path,
-            cipherKey=cipher_key,
-            macKey=mac_key,
-            counter=0,
-            knockPort=port
-        )
+        p = Profile(directory=profile_path, cipherKey=cipher_key, macKey=mac_key, counter=0, knockPort=port)
         p.serialize()
     return temp_dir
 
@@ -58,6 +45,7 @@ def sample_profiles_dir(temp_dir, sample_keys):
 @pytest.fixture
 def make_log_line():
     """Factory fixture to generate synthetic iptables log lines."""
+
     def _generator(src="192.168.1.100", dpt=7000, id_field=1234, seq=5678, ack=9101, win=4096):
         return (
             f"Oct  1 12:00:00 server kernel: REJECT IN=eth0 OUT= "
@@ -65,4 +53,5 @@ def make_log_line():
             f"TTL=64 ID={id_field} PROTO=TCP SPT=43210 DPT={dpt} "
             f"SEQ={seq} ACK={ack} WINDOW={win} RES=0x00 SYN URGP=0"
         )
+
     return _generator

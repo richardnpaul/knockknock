@@ -1,55 +1,84 @@
-# Copyright (c) 2009 Moxie Marlinspike
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as
-# published by the Free Software Foundation; either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-# USA
-#
-
-import os, syslog, time
+import os
+import shutil
 import subprocess
+import syslog
+from collections.abc import Callable
+from typing import Any, Union
 
-from .RuleTimer import RuleTimer
 
 class PortOpener:
+    def __init__(
+        self,
+        stream: Any,
+        openDuration: Union[int, float],
+        on_exit: Callable[[], None] | None = None,
+    ) -> None:
+        self.stream = stream
+        self.openDuration: Union[int, float] = openDuration
+        self.on_exit = on_exit
+        nft_bin = shutil.which("nft")
+        self.nft_path: str = nft_bin if nft_bin else "nft"
 
+    @staticmethod
+    def _is_valid_ipv4(ip: str) -> bool:
+        parts = ip.split(".")
+        if len(parts) != 4:
+            return False
+        for part in parts:
+            if not part.isdigit():
+                return False
+            if str(int(part)) != part:
+                return False
+            if int(part) > 255:
+                return False
+        return True
 
-    def __init__(self, stream, openDuration):
-        self.stream       = stream
-        self.openDuration = openDuration
+    @staticmethod
+    def _is_valid_port(port_str: str) -> bool:
+        if not port_str.isdigit():
+            return False
+        val = int(port_str)
+        return 1 <= val <= 65535
 
-    def waitForRequests(self):
+    def _terminate(self, msg: str) -> None:
+        syslog.syslog(msg)
+        if self.on_exit is not None:
+            self.on_exit()
+        os._exit(4)
+
+    def waitForRequests(self) -> None:
         while True:
-            sourceIP    = self.stream.readline().rstrip("\n")
-            port        = self.stream.readline().rstrip("\n")
+            sourceIP = self.stream.readline().rstrip("\n")
+            port = self.stream.readline().rstrip("\n")
 
             if sourceIP == "" or port == "":
-                syslog.syslog("knockknock.PortOpener: Parent process is closed.  Terminating.")
-                os._exit(4)                    
+                self._terminate("knockknock.PortOpener: Parent process is closed.  Terminating.")
 
-            description = 'INPUT -m limit --limit 1/minute --limit-burst 1 -m state --state NEW -p tcp -s ' + sourceIP + ' --dport ' + str(port) + ' -j ACCEPT'
-            command     = 'iptables -I ' + description
-            command     = command.split()            
+            if not self._is_valid_ipv4(sourceIP):
+                self._terminate("knockknock.PortOpener: Invalid source IP received.  Terminating.")
 
-            subprocess.call(command, shell=False)
+            if not self._is_valid_port(port):
+                self._terminate("knockknock.PortOpener: Invalid port received.  Terminating.")
 
-            RuleTimer(self.openDuration, description).start()
+            duration = int(self.openDuration)
+            element = f"{{ {sourceIP} . {port} timeout {duration}s }}"
+            command_list = [
+                self.nft_path,
+                "add",
+                "element",
+                "inet",
+                "knockknock",
+                "open_ports",
+                element,
+            ]
 
-    def open(self, sourceIP, port):
+            subprocess.call(command_list, shell=False)
+
+    def open(self, sourceIP: str, port: Union[int, str]) -> None:
         try:
             self.stream.write(sourceIP + "\n")
             self.stream.write(str(port) + "\n")
             self.stream.flush()
-        except:
+        except Exception:
             syslog.syslog("knockknock:  Error, PortOpener process has died.  Terminating.")
             os._exit(4)

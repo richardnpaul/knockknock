@@ -1,5 +1,6 @@
 services:
   knockknock-server:
+    image: blackbox-knockknock-server:latest
     build:
       context: ../..
       dockerfile: tests/blackbox/Dockerfile.server

@@ -1,22 +1,14 @@
 import os
 import stat
 from struct import pack
-import pytest
 
 from knockknock.Profile import Profile
 
 
 class TestProfile:
-
     def test_init_with_keys_and_serialize(self, temp_dir, sample_keys):
         cipher_key, mac_key = sample_keys
-        profile = Profile(
-            directory=temp_dir,
-            cipherKey=cipher_key,
-            macKey=mac_key,
-            counter=0,
-            knockPort=7777
-        )
+        profile = Profile(directory=temp_dir, cipherKey=cipher_key, macKey=mac_key, counter=0, knockPort=7777)
 
         assert profile.getName() == os.path.basename(temp_dir)
         assert profile.getDirectory() == temp_dir
@@ -36,13 +28,7 @@ class TestProfile:
 
     def test_deserialize_from_disk(self, temp_dir, sample_keys):
         cipher_key, mac_key = sample_keys
-        original = Profile(
-            directory=temp_dir,
-            cipherKey=cipher_key,
-            macKey=mac_key,
-            counter=42,
-            knockPort=8888
-        )
+        original = Profile(directory=temp_dir, cipherKey=cipher_key, macKey=mac_key, counter=42, knockPort=8888)
         original.serialize()
 
         # Load from disk without passing keys
@@ -78,7 +64,7 @@ class TestProfile:
 
     def test_encrypt_and_decrypt_wrappers(self, sample_profile):
         port = 22
-        packed_port = pack('!H', port)
+        packed_port = pack("!H", port)
 
         ciphertext = sample_profile.encrypt(packed_port)
         assert isinstance(ciphertext, bytes)

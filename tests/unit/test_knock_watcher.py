@@ -13,12 +13,7 @@ class TestKnockWatcher(unittest.TestCase):
         self.mock_profiles = MagicMock()
         self.mock_port_opener = MagicMock()
 
-        self.watcher = KnockWatcher(
-            self.mock_config,
-            self.mock_log_file,
-            self.mock_profiles,
-            self.mock_port_opener
-        )
+        self.watcher = KnockWatcher(self.mock_config, self.mock_log_file, self.mock_profiles, self.mock_port_opener)
 
     @patch("knockknock.KnockWatcher.syslog.syslog")
     @patch("knockknock.KnockWatcher.LogEntry")
@@ -41,9 +36,7 @@ class TestKnockWatcher(unittest.TestCase):
         self.mock_profiles.getProfileForPort.assert_called_once_with(22)
         mock_profile.decrypt.assert_called_once_with(b"ciphertext_16bytes", 100)
         self.mock_port_opener.open.assert_called_once_with("192.168.1.100", 2222)
-        mock_syslog.assert_called_once_with(
-            "Received authenticated port-knock for port 2222 from 192.168.1.100"
-        )
+        mock_syslog.assert_called_once_with("Received authenticated port-knock for port 2222 from 192.168.1.100")
 
     @patch("knockknock.KnockWatcher.syslog.syslog")
     @patch("knockknock.KnockWatcher.LogEntry")
@@ -123,6 +116,4 @@ class TestKnockWatcher(unittest.TestCase):
 
         self.mock_port_opener.open.assert_called_once_with("10.0.0.1", 8080)
         mock_syslog.assert_any_call("knocknock skipping unrecognized line.")
-        mock_syslog.assert_any_call(
-            "Received authenticated port-knock for port 8080 from 10.0.0.1"
-        )
+        mock_syslog.assert_any_call("Received authenticated port-knock for port 8080 from 10.0.0.1")

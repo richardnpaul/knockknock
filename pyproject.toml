@@ -1,0 +1,100 @@
+[build-system]
+requires = ["setuptools>=69.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "knockknock"
+version = "0.8"
+description = "A cryptographic single-packet port-knocker."
+readme = "README"
+license = "GPL-3.0-or-later"
+authors = [
+    { name = "Moxie Marlinspike", email = "moxie@thoughtcrime.org" }
+]
+requires-python = ">=3.10"
+dependencies = [
+    "pycryptodome>=3.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
+    "pytest-gremlins>=1.9.0",
+    "flake8>=7.0.0",
+    "mypy>=1.10.0",
+    "build>=1.2.0",
+    "ruff>=0.6.0",
+    "pre-commit>=4.0.0",
+]
+
+[tool.setuptools]
+packages = ["knockknock", "knockknock.proxy"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-ra -v"
+
+[tool.coverage.run]
+source = ["knockknock"]
+branch = true
+core = "ctrace"
+
+
+
+[tool.coverage.report]
+show_missing = true
+precision = 2
+fail_under = 100
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    ".git",
+    ".agents",
+    "cov_annotate",
+    "build",
+    "dist",
+    "*.egg-info",
+    "__pycache__",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+]
+ignore = [
+    "UP007",  # X | Y union syntax — keep Optional[] for py3.10 compat clarity
+]
+
+[tool.ruff.lint.isort]
+force-sort-within-sections = false
+combine-as-imports = true
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+[tool.mypy]
+python_version = "3.14"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true

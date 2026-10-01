@@ -1,11 +1,9 @@
 import os
-import pytest
 
 from knockknock.DaemonConfiguration import DaemonConfiguration
 
 
 class TestDaemonConfiguration:
-
     def test_load_valid_config(self, temp_dir):
         config_path = os.path.join(temp_dir, "config")
         with open(config_path, "w") as f:

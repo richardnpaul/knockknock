@@ -1,14 +1,13 @@
-import os
 from struct import pack
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
 
 from knockknock.CryptoEngine import CryptoEngine
 from knockknock.MacFailedException import MacFailedException
 
 
 class TestCryptoEngine:
-
     def test_init_attributes(self, sample_keys):
         cipher_key, mac_key = sample_keys
         mock_profile = MagicMock()
@@ -25,7 +24,7 @@ class TestCryptoEngine:
         mock_profile = MagicMock()
         engine = CryptoEngine(mock_profile, cipher_key, mac_key, counter=0)
 
-        port_bytes = pack('!H', 22)
+        port_bytes = pack("!H", 22)
         mac1 = engine.calculateMac(port_bytes)
         mac2 = engine.calculateMac(port_bytes)
 
@@ -34,7 +33,7 @@ class TestCryptoEngine:
         assert mac1 == mac2
 
         # Different input produces different MAC
-        different_port = pack('!H', 80)
+        different_port = pack("!H", 80)
         assert engine.calculateMac(different_port) != mac1
 
     def test_verify_mac_success(self, sample_keys):
@@ -42,7 +41,7 @@ class TestCryptoEngine:
         mock_profile = MagicMock()
         engine = CryptoEngine(mock_profile, cipher_key, mac_key, counter=0)
 
-        port_bytes = pack('!H', 443)
+        port_bytes = pack("!H", 443)
         valid_mac = engine.calculateMac(port_bytes)
 
         # Should execute cleanly without raising exception
@@ -53,7 +52,7 @@ class TestCryptoEngine:
         mock_profile = MagicMock()
         engine = CryptoEngine(mock_profile, cipher_key, mac_key, counter=0)
 
-        port_bytes = pack('!H', 443)
+        port_bytes = pack("!H", 443)
         corrupted_mac = b"X" * 10
 
         with pytest.raises(MacFailedException, match="MAC Doesn't Match!"):
@@ -77,7 +76,7 @@ class TestCryptoEngine:
         mock_profile = MagicMock()
         engine = CryptoEngine(mock_profile, cipher_key, mac_key, counter=10)
 
-        port_bytes = pack('!H', 8080)
+        port_bytes = pack("!H", 8080)
         ciphertext = engine.encrypt(port_bytes)
 
         assert isinstance(ciphertext, bytes)
@@ -96,7 +95,7 @@ class TestCryptoEngine:
         receiver = CryptoEngine(receiver_profile, cipher_key, mac_key, counter=0)
 
         target_port = 22
-        ciphertext = sender.encrypt(pack('!H', target_port))
+        ciphertext = sender.encrypt(pack("!H", target_port))
 
         decrypted_port = receiver.decrypt(ciphertext, windowSize=5)
 
@@ -115,13 +114,13 @@ class TestCryptoEngine:
 
         # Advance sender counter by 3 dropped knocks
         for _ in range(3):
-            sender.encrypt(pack('!H', 1234))
+            sender.encrypt(pack("!H", 1234))
 
         # sender counter is now 3
         assert sender.counter == 3
 
         target_port = 80
-        valid_ciphertext = sender.encrypt(pack('!H', target_port))
+        valid_ciphertext = sender.encrypt(pack("!H", target_port))
         assert sender.counter == 4
 
         # Receiver counter is 0, window is 10 (offset x=3)
@@ -143,10 +142,10 @@ class TestCryptoEngine:
 
         # Advance sender by 10 knocks
         for _ in range(10):
-            sender.encrypt(pack('!H', 1111))
+            sender.encrypt(pack("!H", 1111))
 
         # Packet encrypted with counter 10
-        ciphertext = sender.encrypt(pack('!H', 22))
+        ciphertext = sender.encrypt(pack("!H", 22))
 
         # Receiver windowSize is only 5 (checks counters 0..4)
         with pytest.raises(MacFailedException, match="Ciphertext failed to decrypt in range..."):
@@ -163,7 +162,7 @@ class TestCryptoEngine:
         sender = CryptoEngine(sender_profile, cipher_key, mac_key, counter=0)
         receiver = CryptoEngine(receiver_profile, cipher_key, mac_key, counter=0)
 
-        ciphertext = sender.encrypt(pack('!H', 22))
+        ciphertext = sender.encrypt(pack("!H", 22))
 
         tampered = bytearray(ciphertext)
         tampered[0] ^= 0xFF  # Corrupt first byte

@@ -44,22 +44,24 @@ if [ -d "/shared" ]; then
     echo "Exported profile to /shared/testclient"
 fi
 
-# 5. Apply iptables firewall rules
+# 5. Apply nftables firewall rules
 echo "Applying minimal firewall rules..."
-iptables -F || true
-iptables -X || true
+nft flush ruleset || true
 
-iptables -A INPUT -i lo -j ACCEPT
-iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+nft add table inet filter || true
+nft 'add chain inet filter input { type filter hook input priority filter; policy accept; }'
+nft 'add chain inet filter REJECTLOG'
 
-iptables -N REJECTLOG
-iptables -A REJECTLOG -j LOG --log-level debug --log-tcp-sequence --log-tcp-options --log-ip-options --log-prefix "REJECT "
-iptables -A REJECTLOG -p tcp -j REJECT --reject-with tcp-reset
-iptables -A REJECTLOG -j REJECT
+nft add rule inet filter input iif "lo" accept
+nft add rule inet filter input ct state established,related accept
+nft add rule inet filter REJECTLOG 'log prefix "REJECT " flags tcp sequence,options flags ip options'
+nft add rule inet filter REJECTLOG reject with tcp reset
+
+# Allow knockknock authenticated packets
+nft add rule inet filter input meta mark 0x4b4b accept
 
 # Route knock port (7000) and protected service (8080) to REJECTLOG
-iptables -A INPUT -p tcp --dport 7000 -j REJECTLOG
-iptables -A INPUT -p tcp --dport 8080 -j REJECTLOG
+nft add rule inet filter input tcp dport '{ 7000, 8080 }' jump REJECTLOG
 
 echo "Firewall active. Starting knockknock-daemon..."
 knockknock-daemon

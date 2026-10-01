@@ -1,0 +1,136 @@
+name: CI
+
+on:
+  push: null
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.14"
+
+jobs:
+  static-analysis:
+    name: Static Analysis & Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Package and Dev Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Verify Syntax Compilation
+        run: python3 -m compileall -q knockknock
+
+      - name: Run Flake8 Linter
+        run: flake8 knockknock
+
+      - name: Verify Dependencies
+        run: pip check
+
+  unit-and-coverage:
+    name: Unit Tests & 100% Coverage Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Package and Dev Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Pytest with 100% Statement and Branch Coverage
+        run: pytest --cov=knockknock --cov-branch --cov-report=term-missing --cov-fail-under=100
+
+  mutation-testing:
+    name: Mutation Testing Gate (Zero Surviving Gremlins)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Package and Dev Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Run Pytest Gremlins
+        run: pytest --gremlins --gremlin-targets=knockknock --strict-pardons
+
+  package-and-cli:
+    name: Package Build & CLI Smoke Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Build Tooling
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Build Source Distribution and Wheel
+        run: python -m build
+
+      - name: Install Distribution Wheel
+        run: pip install dist/*.whl
+
+      - name: Verify CLI Smoke Tests
+        run: |
+          set +e
+          knockknock
+          KK_EXIT=$?
+          [ "$KK_EXIT" -eq 2 ] || { echo "knockknock unexpected exit: $KK_EXIT"; exit 1; }
+
+          knockknock-genprofile
+          GP_EXIT=$?
+          [ "$GP_EXIT" -eq 3 ] || { echo "knockknock-genprofile unexpected exit: $GP_EXIT"; exit 1; }
+
+          knockknock-daemon
+          DM_EXIT=$?
+          [ "$DM_EXIT" -eq 3 ] || { echo "knockknock-daemon unexpected exit: $DM_EXIT"; exit 1; }
+
+          knockknock-proxy
+          PX_EXIT=$?
+          [ "$PX_EXIT" -eq 3 ] || { echo "knockknock-proxy unexpected exit: $PX_EXIT"; exit 1; }
+          set -e
+
+  blackbox-docker-e2e:
+    name: Docker Blackbox E2E Suite (TAP-13)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Host Network Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends hping3 curl netcat-openbsd
+
+      - name: Execute Blackbox Master Runner
+        run: tests/blackbox/run_all.sh

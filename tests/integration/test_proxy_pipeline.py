@@ -1,22 +1,20 @@
-import asyncore
-import importlib
+import asyncio
+import importlib.util
 import os
 import socket
 import struct
 import tempfile
 import threading
-import time
 import unittest
-from unittest.mock import MagicMock, patch
+from pathlib import Path
+from unittest.mock import patch
 
 from knockknock.Profile import Profile
 from knockknock.Profiles import Profiles
 
-import importlib.util
-from pathlib import Path
-
 script_path = Path(__file__).resolve().parent.parent.parent / "knockknock-proxy.py"
 spec = importlib.util.spec_from_file_location("knockknock_proxy", script_path)
+assert spec is not None and spec.loader is not None
 proxy_mod = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(proxy_mod)
 ProxyServer = proxy_mod.ProxyServer
@@ -24,7 +22,6 @@ ProxyServer = proxy_mod.ProxyServer
 
 class TestProxyPipelineIntegration(unittest.TestCase):
     def setUp(self):
-        asyncore.socket_map.clear()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.profiles_dir = os.path.join(self.temp_dir.name, "profiles")
         os.makedirs(self.profiles_dir)
@@ -59,32 +56,34 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         self.proxy_port = self.proxy_socket.getsockname()[1]
         self.proxy_socket.close()
 
+        self.server_ready = threading.Event()
         self.proxy_server = ProxyServer(self.proxy_port, self.profiles)
+        self.loop = asyncio.new_event_loop()
+        self.server_thread = threading.Thread(target=self._run_event_loop, daemon=True)
+        self.server_thread.start()
+        self.server_ready.wait(timeout=5.0)
 
-        self.running = True
-        self.asyncore_thread = threading.Thread(target=self._run_asyncore, daemon=True)
-        self.asyncore_thread.start()
-
-    def _run_asyncore(self):
-        while self.running:
-            asyncore.loop(timeout=0.05, count=1)
+    def _run_event_loop(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_until_complete(self.proxy_server.start())
+        self.server_ready.set()
+        self.loop.run_forever()
 
     def tearDown(self):
-        self.running = False
-        time.sleep(0.05)
-        if hasattr(self, "proxy_server"):
+        if hasattr(self, "loop") and self.loop.is_running():
+            if hasattr(self, "proxy_server"):
+                self.loop.call_soon_threadsafe(self.proxy_server.close)
+            self.loop.call_soon_threadsafe(self.loop.stop)
+            self.server_thread.join(timeout=2.0)
+        elif hasattr(self, "proxy_server"):
             self.proxy_server.close()
         if hasattr(self, "target_socket"):
             self.target_socket.close()
-        asyncore.close_all()
-        asyncore.socket_map.clear()
         self.temp_dir.cleanup()
 
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
-    def test_socks_proxy_pipeline_with_knocking_profile(self, mock_sleep, mock_subprocess):
-        mock_subprocess.return_value = 0
-
+    def test_socks_proxy_pipeline_with_knocking_profile(self, mock_sleep, mock_send_syn):
         # Echo server thread
         def echo_server_worker():
             conn, _ = self.target_socket.accept()
@@ -114,12 +113,10 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         connect_resp = client.recv(10)
         self.assertEqual(connect_resp[:4], b"\x05\x00\x00\x01")
 
-        self.assertTrue(mock_subprocess.called)
-        called_cmd = mock_subprocess.call_args[0][0]
-        self.assertEqual(called_cmd[0], "hping3")
-        self.assertIn("-p", called_cmd)
-        port_index = called_cmd.index("-p") + 1
-        self.assertEqual(called_cmd[port_index], "2222")  # Knock port
+        self.assertTrue(mock_send_syn.called)
+        called_args = mock_send_syn.call_args[0]
+        self.assertEqual(called_args[0], "127.0.0.1")
+        self.assertEqual(called_args[1], 2222)  # Knock port
 
         # 4. Stream data bidirectional
         client.sendall(b"HELLO_SOCKS")
@@ -129,8 +126,8 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         self.assertEqual(response, b"HELLO_SOCKS_ECHO")
         client.close()
 
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    def test_socks_proxy_pipeline_direct_without_profile(self, mock_subprocess):
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
+    def test_socks_proxy_pipeline_direct_without_profile(self, mock_send_syn):
         # Empty profiles
         empty_dir = tempfile.mkdtemp()
         self.proxy_server.profiles = Profiles(empty_dir)
@@ -160,7 +157,7 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         self.assertEqual(connect_resp[:4], b"\x05\x00\x00\x01")
 
         # No knock should have been sent
-        mock_subprocess.assert_not_called()
+        mock_send_syn.assert_not_called()
 
         client.sendall(b"REQUEST")
         echo_thread.join(timeout=2.0)

@@ -6,6 +6,9 @@
 #
 # Courtesy: Jake Appelbaum
 
+set -o errexit
+set -o nounset
+
 IPTABLES="/sbin/iptables"
 
 # We want to allow open connections

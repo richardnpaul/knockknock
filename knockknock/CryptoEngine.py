@@ -1,80 +1,68 @@
-# Copyright (c) 2009 Moxie Marlinspike
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as
-# published by the Free Software Foundation; either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-# USA
-#
+import hashlib
+import hmac
+import struct
+from typing import TYPE_CHECKING, Any
 
-import os, hmac, hashlib
-from .MacFailedException import MacFailedException
 from Crypto.Cipher import AES
-from struct import *
+
+from .MacFailedException import MacFailedException
+
+if TYPE_CHECKING:
+    pass
+
 
 class CryptoEngine:
+    def __init__(self, profile: Any, cipherKey: bytes, macKey: bytes, counter: int) -> None:
+        self.profile = profile
+        self.counter: int = counter
+        self.macKey: bytes = macKey
+        self.cipherKey: bytes = cipherKey
+        self.cipher = AES.new(self.cipherKey, AES.MODE_ECB)
 
-    def __init__(self, profile, cipherKey, macKey, counter):
-        self.profile   = profile
-        self.counter   = counter
-        self.macKey    = macKey
-        self.cipherKey = cipherKey
-        self.cipher    = AES.new(self.cipherKey, AES.MODE_ECB)
-
-    def calculateMac(self, port):
+    def calculateMac(self, port: bytes) -> bytes:
         hmacSha = hmac.new(self.macKey, port, hashlib.sha1)
-        mac     = hmacSha.digest()
+        mac = hmacSha.digest()
         return mac[:10]
 
-    def verifyMac(self, port, remoteMac):
+    def verifyMac(self, port: bytes, remoteMac: bytes) -> None:
         localMac = self.calculateMac(port)
 
-        if (localMac != remoteMac):
+        if not hmac.compare_digest(localMac, remoteMac):
             raise MacFailedException("MAC Doesn't Match!")
 
-    def encryptCounter(self, counter):
-        counterBytes = pack('!IIII', 0, 0, 0, counter)
+    def encryptCounter(self, counter: int) -> bytes:
+        counterBytes = struct.pack("!IIII", 0, 0, 0, counter)
         return self.cipher.encrypt(counterBytes)
 
-    def encrypt(self, plaintextData):
+    def encrypt(self, plaintextData: bytes) -> bytes:
         plaintextData += self.calculateMac(plaintextData)
-        counterCrypt   = self.encryptCounter(self.counter)
-        self.counter   = self.counter + 1
-        encrypted      = bytes(b1 ^ b2 for b1, b2 in zip(plaintextData, counterCrypt))
+        counterCrypt = self.encryptCounter(self.counter)
+        self.counter = self.counter + 1
+        encrypted = bytes(b1 ^ b2 for b1, b2 in zip(plaintextData, counterCrypt))
 
         self.profile.setCounter(self.counter)
         self.profile.storeCounter()
 
         return encrypted
 
-    def decrypt(self, encryptedData, windowSize):
+    def decrypt(self, encryptedData: bytes, windowSize: int) -> int:
         for x in range(windowSize):
             try:
                 counterCrypt = self.encryptCounter(self.counter + x)
-                decrypted    = bytes(b1 ^ b2 for b1, b2 in zip(encryptedData, counterCrypt))
-                    
+                decrypted = bytes(b1 ^ b2 for b1, b2 in zip(encryptedData, counterCrypt))
+
                 port = decrypted[:2]
-                mac  = decrypted[2:]
-                    
+                mac = decrypted[2:]
+
                 self.verifyMac(port, mac)
                 self.counter += x + 1
 
                 self.profile.setCounter(self.counter)
                 self.profile.storeCounter()
 
-                return int(unpack("!H", port)[0])
+                return int(struct.unpack("!H", port)[0])
 
             except MacFailedException:
                 pass
 
         raise MacFailedException("Ciphertext failed to decrypt in range...")
-

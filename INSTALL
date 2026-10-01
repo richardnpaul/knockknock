@@ -1,162 +1,173 @@
 Requirements:
-  
-    * Python >= 2.4 (apt-get install python)
-    * PyCrypt (apt-get install python-crypto)
-    * hping3 (client only -- apt-get install hping3)
-  
+
+    * Python >= 3.10 (apt-get install python3 python3-pip)
+    * PyCryptodome >= 3.20.0 (pip install pycryptodome; installed automatically)
+    * nftables (server only -- apt-get install nftables)
+
 Installing The Server:
 
-    After installing the requirements, the first step is to download,
-    unpack, and install the knockknock tarball:
-    
-      * wget
-        http://www.thoughtcrime.org/software/knockknock/knockknock-0.5.tar.gz
-      * tar zxvf knockknock-0.5.tar.gz
-      * cd knockknock-0.5
-      * sudo python setup.py install
-    
-    Once this is done, we need to configure the server.
-  
+    After installing the requirements, install knockknock using pip from the
+    source repository directory or an unpacked release tarball:
+
+      * sudo pip install .
+
+    For development or editable installation:
+
+      * pip install -e .
+
+    Once installed, configure the server configuration directory:
+
+      * sudo mkdir -p /etc/knockknock.d/profiles
+      * sudo cp config /etc/knockknock.d/config
+
+    The main configuration options in '/etc/knockknock.d/config' are:
+      - delay: Number of seconds the port remains open before auto-closing (default: 15)
+      - error_window: Sliding counter window allowed for out-of-order/replayed knocks (default: 20)
+      - logfile: Path to kernel firewall log (default: /var/log/kern.log)
+      - interface: Network interface to apply firewall rules on (optional)
+
 Configuring The Server:
 
-    Every (user,machine) tuple that the server wishes to grant port
-    knocking access to gets a 'profile'.  If, for instance, there were
+    Every (user, machine) tuple that the server wishes to grant port
+    knocking access to gets a 'profile'. If, for instance, there were
     a user 'clement' who needed port knocking access from three remote
-    machines -- 'laptop', 'munin' and 'storage', you would create
-    three profiles on the server, perhaps named: 'clement-laptop',
-    'clement-munin', and 'clement-storage'.  Each profile maintains
-    its own encryption keys and state.  Each profile has its own
-    'knock port' where the port knock requests are sent.  This has to
-    be a port that you don't plan on using for a running service.
-  
-    You can create profiles on the server by running:
-  
-    * sudo knockknock-genprofile <knockPort> <profileName>
-  
-    So, for instance, if we wished to create a profile for
-    'clement-laptop' that used '666' as a knock port, we'd run 'sudo
-    knockknock-genprofile 666 clement-laptop'
-  
-    That's it, your server is now configured.  To run it, simply
-    execute:
-  
-    * sudo knockknock-daemon
-  
-  
+    machines -- 'laptop', 'munin', and 'storage', you would create
+    three profiles on the server: 'clement-laptop', 'clement-munin',
+    and 'clement-storage'.
+
+    Each profile maintains its own cryptographic keys (AES-CTR key,
+    HMAC-SHA1 key) and counter state. Each profile also has its own
+    'knock port' where single-packet port knock requests are directed.
+    This should be a port that is not in use by any other running service.
+
+    You create profiles on the server by running:
+
+      * sudo knockknock-genprofile <profileName> <knockPort>
+
+    For example, to create a profile for 'clement-laptop' using port 666
+    as its knock port:
+
+      * sudo knockknock-genprofile clement-laptop 666
+
+    This generates the profile directory in '/etc/knockknock.d/profiles/clement-laptop/'
+    containing the cryptographic keys, initial counter, and knock port mapping.
+
+    To start the server daemon, execute:
+
+      * sudo knockknock-daemon
+
+    knockknock-daemon forks into the background, drops root privileges to
+    'nobody:adm', and tails the kernel log for authenticated knock packets.
+    When a valid knock is detected, it communicates across an internal IPC pipe
+    to an isolated root helper that dynamically manages nftables timed set elements.
+
 Configuring The Client:
-  
-    Follow the server installation instructions to get the software on
-    the client.  To configure the client, however, we need to copy the
-    profile information on the server to the client machine.  If we're
-    configuring the user 'clement' on the client machine 'laptop', the
-    profile on the server might be called 'clement-laptop'.  We'd need
-    to copy the files from /etc/knockknock.d/profiles/clement-laptop/
-    on to the client machine.  You can copy the values by hand, email
-    the files (securely!), or (if you have root access), scp them.
-  
-    The files need to end up in '~/.knockknock/<serverHostName>/' on
-    the client machine.  That is, if the server is called
-    myserver.com, the profile information would be copied to
-    '/home/clement/.knockknock/myserver.com/' on the client.  Using
-    scp:
-  
-    * scp \
-      root@myserver.com:/etc/knockknock.d/profiles/laptop-clement/* \
-      ~/.knockknock/myserver.com/
-    
+
+    Follow the installation instructions to install knockknock on the client
+    machine. Packet generation is handled natively using Python's standard library
+    (socket.SOCK_RAW with IP_HDRINCL) without external binary dependencies like hping3.
+    Clients require root or the Linux CAP_NET_RAW capability to transmit raw SYN packets.
+
+    To configure the client, copy the profile directory generated on the
+    server to the client machine under '~/.knockknock/<serverHostName>/'.
+
+    For example, if the server is 'myserver.com' and the profile is
+    'clement-laptop', copy the files securely to:
+    '/home/clement/.knockknock/myserver.com/'
+
+    Using scp:
+
+      * mkdir -p ~/.knockknock/myserver.com
+      * scp root@myserver.com:/etc/knockknock.d/profiles/clement-laptop/* ~/.knockknock/myserver.com/
+      * chmod 600 ~/.knockknock/myserver.com/*
+
 Configuring The Server Firewall Rules:
 
-    The goal here is to firewall off all the ports that you don't want
-    to be fully public, and to have connection attempts to firewalled
-    ports be logged to '/var/log/kern.log'.  There is a script called
-    'minimal-firewall.sh' included with knockknock that will will
-    firewall off everything (but of course any port can be opened by a
-    knockknock request).  Feel free to use or modify this script.
-    Otherwise, you'll want to setup the firewall rules generally as
-    follows.
-  
-    Let's say that on the server we're running three services: pop3s
-    (995), ssh (22), and httpd (80).  We want httpd to be public, but
-    we want sshd and imapd to only be available to those who send
-    valid port knock requests.  The rules might look as follows.
-  
-    We want to allow existing open connections and all outgoing
-    traffic:
-  
-    * sudo iptables -A INPUT -m state --state RELATED,ESTABLISHED -j \
-      ACCEPT
-    * sudo iptables -A OUTPUT -m state --state NEW,RELATED,ESTABLISHED \
-      -j ACCEPT
-    * sudo iptables -A OUTPUT -j ACCEPT
-  
-    We want to setup a REJECT logging rule that we'll call REJECTLOG:
-  
-    * sudo iptables -N REJECTLOG
+    The goal is to firewall off all protected ports from public access,
+    and have connection attempts to firewalled ports logged with TCP sequence
+    and IP options to '/var/log/kern.log' (or your configured log file).
 
-    * sudo iptables -A REJECTLOG -j LOG --log-level debug \
-      --log-tcp-sequence --log-tcp-options --log-ip-options -m limit \
-      --limit 3/s --limit-burst 8 --log-prefix "REJECT "
+    knockknock-daemon automatically manages a dedicated table ('inet knockknock')
+    using native timed set elements that expire automatically in the kernel.
 
-    * sudo iptables -A REJECTLOG -p tcp -j REJECT --reject-with tcp-reset
-    * sudo iptables -A REJECTLOG -j REJECT
-  
-    And finally setup the INPUT rules to allow connections on port 80
-    but reject everything else:
-  
-    * sudo iptables -A INPUT -m state --state NEW -p tcp --dport 80 -j \
-      ACCEPT
-    * sudo iptables -A INPUT -j REJECTLOG
-  
-    You'll want all of this to be in some sort of script that runs at
-    boot.
+    Configure your server's base firewall ruleset using nftables as follows:
+
+    1. Create the base filter table and chains:
+
+      * sudo nft add table inet filter
+      * sudo nft 'add chain inet filter input { type filter hook input priority filter; policy accept; }'
+      * sudo nft 'add chain inet filter REJECTLOG'
+
+    2. Allow loopback and established connections:
+
+      * sudo nft add rule inet filter input iif "lo" accept
+      * sudo nft add rule inet filter input ct state established,related accept
+
+    3. Allow traffic authenticated by knockknock (marked with 0x4b4b):
+
+      * sudo nft add rule inet filter input meta mark 0x4b4b accept
+
+    4. Configure the REJECTLOG chain to log knocks and reject with TCP reset:
+
+      * sudo nft add rule inet filter REJECTLOG 'log prefix "REJECT " flags tcp sequence,options flags ip options'
+      * sudo nft add rule inet filter REJECTLOG reject with tcp reset
+
+    5. Route knock ports and protected service ports to REJECTLOG, allowing public ports:
+
+      * sudo nft add rule inet filter input tcp dport 80 accept
+      * sudo nft add rule inet filter input tcp dport '{ <knockPort>, <protectedPort> }' jump REJECTLOG
+
+    Note on logging: Ensure kernel log messages reach '/var/log/kern.log'
+    (e.g. via rsyslog: 'kern.debug /var/log/kern.log' or systemd-journald).
 
 Using knockknock:
 
-    Now that you have knockknock-daemon running, the firewall rules
-    configured on the server, and your profile installed on the
-    client, you're ready to open some ports.  On the client, you
-    simply run 'knockknock -p <portToOpen> myserver.com'.  To open,
-    for instance, ssh (22):
-  
-    * sudo knockknock -p 22 myserver.com
-  
-    You now have the amount of time specified by the 'delay' parameter
-    in /etc/knockknock.d/config on the server to connect from your
-    client's IP address to port 22 (defaults to 15 seconds).  As soon
-    as you connect, no further connections will be allowed unless
-    another knockknock request is issued.
+    Once knockknock-daemon is running on the server, firewall rules are active,
+    and the profile is installed on the client, you can open ports from the client:
+
+      * sudo knockknock -p <portToOpen> myserver.com
+
+    For example, to open SSH (port 22):
+
+      * sudo knockknock -p 22 myserver.com
+
+    knockknock crafts a single encrypted SYN packet using AES-CTR and HMAC-SHA1
+    (with constant-time MAC verification), encoding the destination port and
+    counter inside TCP/IP header fields.
+
+    You then have the configured delay window (default 15 seconds) to connect
+    from your client's IP to port 22. As soon as you connect, the dynamic rule
+    closes behind you and no further connections are permitted without another knock.
 
 Optionally using knockknock-proxy:
 
-   After you have the basic knockknock system running, you might find
-   yourself wishing that you didn't have to type "knockknock -p
-   <whatever> myserver.com" all the time.  It's not such a big deal
-   for opening an ssh session, but what about your pop3 client?
-   That's the kind of software which might want to periodically make
-   connections on its own, and even if it doesn't, opening up a
-   terminal to run 'knockknock' every time you'd like to click 'check
-   mail' is kind of a drag.
+    If you want transparent, automatic port knocking without manually typing
+    'knockknock -p <port> myserver.com' every time, use knockknock-proxy.
 
-   So knockknock-proxy is a small SOCKS proxy that is
-   knockknock-aware.  It binds to a port you specify on localhost, and
-   then implements the SOCKS protocol as usual.  However, whenver it
-   sees a request for a connection to a host that you have configured
-   knockknock for, it quickly sends a knock to the server before
-   proxying the connection through.  The upshot is that any
-   application which has SOCKS proxy support will seamlessly
-   auto-knock each time it would like to make a connection.
+    knockknock-proxy is a lightweight, asynchronous SOCKS5 proxy built on Python
+    asyncio. It listens on a specified local port (e.g. 1080) and intercepts
+    SOCKS5 connection requests:
 
-   To run knockknock-proxy, you simply execute:
+      * knockknock-proxy <listenPort>
 
-    * sudo knockknock-proxy <listenPort>
+    For example:
 
-   Be aware that while knockknock-proxy binds to localhost and isn't
-   accessable from the network, it doesn't support any type of
-   authentication mechanism to differentiate between users on a local
-   system.  This means that it's best suited for personal, single-user
-   systems.
+      * knockknock-proxy 1080
 
-   Also note that you CAN NOT use knockknock-proxy and the command-
-   line app 'knockknock' simultaneously.  If knockknock-proxy is running,
-   you should only be using knockknock-proxy.
+    Whenever an application (such as a web browser, email client, or SSH client)
+    requests a connection through the proxy to a destination host configured in
+    '~/.knockknock/<serverHostName>/', knockknock-proxy automatically dispatches
+    the cryptographic knock packet before establishing and bidirectional streaming
+    the connection.
 
+    To use knockknock-proxy with SSH, configure '~/.ssh/config':
+
+      Host myserver.com
+        ProxyCommand nc -X 5 -x 127.0.0.1:1080 %h %p
+
+    Notes on knockknock-proxy:
+      - knockknock-proxy binds to localhost (127.0.0.1) and is intended for
+        single-user systems.
+      - Both the CLI app 'knockknock' and 'knockknock-proxy' synchronize the
+        monotonic counter stored in the profile directory on disk. Avoid issuing
+        concurrent knocks simultaneously from both tools to prevent counter divergence.
