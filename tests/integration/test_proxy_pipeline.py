@@ -83,11 +83,9 @@ class TestProxyPipelineIntegration(unittest.TestCase):
             self.target_socket.close()
         self.temp_dir.cleanup()
 
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
-    def test_socks_proxy_pipeline_with_knocking_profile(self, mock_sleep, mock_subprocess):
-        mock_subprocess.return_value = 0
-
+    def test_socks_proxy_pipeline_with_knocking_profile(self, mock_sleep, mock_send_syn):
         # Echo server thread
         def echo_server_worker():
             conn, _ = self.target_socket.accept()
@@ -117,12 +115,10 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         connect_resp = client.recv(10)
         self.assertEqual(connect_resp[:4], b"\x05\x00\x00\x01")
 
-        self.assertTrue(mock_subprocess.called)
-        called_cmd = mock_subprocess.call_args[0][0]
-        self.assertEqual(called_cmd[0], "hping3")
-        self.assertIn("-p", called_cmd)
-        port_index = called_cmd.index("-p") + 1
-        self.assertEqual(called_cmd[port_index], "2222")  # Knock port
+        self.assertTrue(mock_send_syn.called)
+        called_args = mock_send_syn.call_args[0]
+        self.assertEqual(called_args[0], "127.0.0.1")
+        self.assertEqual(called_args[1], 2222)  # Knock port
 
         # 4. Stream data bidirectional
         client.sendall(b"HELLO_SOCKS")
@@ -132,8 +128,8 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         self.assertEqual(response, b"HELLO_SOCKS_ECHO")
         client.close()
 
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    def test_socks_proxy_pipeline_direct_without_profile(self, mock_subprocess):
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
+    def test_socks_proxy_pipeline_direct_without_profile(self, mock_send_syn):
         # Empty profiles
         empty_dir = tempfile.mkdtemp()
         self.proxy_server.profiles = Profiles(empty_dir)
@@ -163,7 +159,7 @@ class TestProxyPipelineIntegration(unittest.TestCase):
         self.assertEqual(connect_resp[:4], b"\x05\x00\x00\x01")
 
         # No knock should have been sent
-        mock_subprocess.assert_not_called()
+        mock_send_syn.assert_not_called()
 
         client.sendall(b"REQUEST")
         echo_thread.join(timeout=2.0)

@@ -152,8 +152,8 @@ class TestEndpointConnection(unittest.TestCase):
 class TestKnockingEndpointConnection(unittest.TestCase):
 
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    def test_init_and_send_knock(self, mock_subproc, mock_sleep):
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
+    def test_init_and_send_knock(self, mock_send_syn, mock_sleep):
         mock_shuttle = MagicMock()
         mock_profile = MagicMock()
         mock_profile.getKnockPort.return_value = 22
@@ -166,29 +166,46 @@ class TestKnockingEndpointConnection(unittest.TestCase):
 
         mock_profile.encrypt.assert_called_once_with(struct.pack("!H", 80))
         mock_profile.getKnockPort.assert_called_once()
+        mock_send_syn.assert_called_once_with(
+            "192.168.1.200", 22, 100, 200000, 300000, 4096
+        )
         mock_sleep.assert_called_once_with(0.25)
-
-        expected_command = [
-            "hping3", "-q", "-S", "-c", "1",
-            "-p", "22",
-            "-N", "100",
-            "-w", "4096",
-            "-M", "200000",
-            "-L", "300000",
-            "192.168.1.200"
-        ]
-        self.assertTrue(mock_subproc.called)
-        called_args, called_kwargs = mock_subproc.call_args
-        self.assertEqual(called_args[0], expected_command)
-        self.assertEqual(called_kwargs["shell"], False)
 
         self.assertEqual(knocking_conn.host, "192.168.1.200")
         self.assertEqual(knocking_conn.port, 80)
         self.assertIs(knocking_conn.profile, mock_profile)
 
+    @patch("knockknock.proxy.KnockingEndpointConnection.os._exit")
+    @patch("knockknock.proxy.KnockingEndpointConnection.syslog.syslog")
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn", side_effect=PermissionError("Need CAP_NET_RAW"))
+    def test_send_knock_handles_permission_error(self, mock_send_syn, mock_syslog, mock_exit):
+        mock_shuttle = MagicMock()
+        mock_profile = MagicMock()
+        mock_profile.getKnockPort.return_value = 22
+        mock_profile.encrypt.return_value = struct.pack("!HIIH", 1, 2, 3, 4)
+
+        KnockingEndpointConnection(mock_shuttle, mock_profile, "10.0.0.5", 443)
+
+        mock_syslog.assert_called_once()
+        mock_exit.assert_called_once_with(3)
+
+    @patch("knockknock.proxy.KnockingEndpointConnection.os._exit")
+    @patch("knockknock.proxy.KnockingEndpointConnection.syslog.syslog")
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn", side_effect=OSError("Network down"))
+    def test_send_knock_handles_os_error(self, mock_send_syn, mock_syslog, mock_exit):
+        mock_shuttle = MagicMock()
+        mock_profile = MagicMock()
+        mock_profile.getKnockPort.return_value = 22
+        mock_profile.encrypt.return_value = struct.pack("!HIIH", 1, 2, 3, 4)
+
+        KnockingEndpointConnection(mock_shuttle, mock_profile, "10.0.0.5", 443)
+
+        mock_syslog.assert_called_once()
+        mock_exit.assert_called_once_with(3)
+
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    def test_reconnect_sends_knock(self, mock_subproc, mock_sleep):
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
+    def test_reconnect_sends_knock(self, mock_send_syn, mock_sleep):
         mock_shuttle = MagicMock()
         mock_profile = MagicMock()
         mock_profile.getKnockPort.return_value = 22
@@ -204,8 +221,8 @@ class TestKnockingEndpointConnection(unittest.TestCase):
         self.assertEqual(knocking_conn.connectAttempts, 1)
 
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
-    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    def test_reconnect_hook_sends_knock(self, mock_subproc, mock_sleep):
+    @patch("knockknock.proxy.KnockingEndpointConnection.send_syn")
+    def test_reconnect_hook_sends_knock(self, mock_send_syn, mock_sleep):
         mock_shuttle = MagicMock()
         mock_profile = MagicMock()
         mock_profile.getKnockPort.return_value = 22

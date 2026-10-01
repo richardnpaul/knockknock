@@ -1,9 +1,10 @@
 import os
-import subprocess
+import syslog
 import time
 from struct import pack, unpack
 from typing import Any
 
+from knockknock.PacketSender import send_syn
 from .EndpointConnection import EndpointConnection
 
 
@@ -27,20 +28,14 @@ class KnockingEndpointConnection(EndpointConnection):
     def sendKnock(self, profile: Any, host: str, port: int) -> None:
         packed_port = pack('!H', int(port))
         packet_data = profile.encrypt(packed_port)
-        knock_port = profile.getKnockPort()
+        knock_port = int(profile.getKnockPort())
 
         id_field, seq_field, ack_field, win_field = unpack('!HIIH', packet_data)
 
-        command = [
-            "hping3", "-q", "-S", "-c", "1",
-            "-p", str(knock_port),
-            "-N", str(id_field),
-            "-w", str(win_field),
-            "-M", str(seq_field),
-            "-L", str(ack_field),
-            host,
-        ]
+        try:
+            send_syn(host, knock_port, id_field, seq_field, ack_field, win_field)
+        except (PermissionError, OSError) as e:
+            syslog.syslog(f"KnockingEndpointConnection: error sending knock packet: {e}")
+            os._exit(3)
 
-        with open(os.devnull, 'w') as devnull:
-            subprocess.call(command, shell=False, stdout=devnull, stderr=subprocess.STDOUT)
         time.sleep(0.25)

@@ -1,6 +1,6 @@
 ---
 goal: Replace hping3 with a pure-Python raw-socket SYN packet sender
-version: 1.0
+version: 1.1
 date_created: 2026-10-01
 last_updated: 2026-10-01
 owner: Architecture & Engineering
@@ -19,9 +19,10 @@ self-contained pure-Python raw TCP SYN packet sender.  `hping3` is invoked in tw
 2. [`knockknock/proxy/KnockingEndpointConnection.py`](file:///workspaces/knockknock/knockknock/proxy/KnockingEndpointConnection.py) — the proxy's knocking path.
 
 The replacement constructs a minimal IP + TCP SYN packet manually using Python's
-`struct.pack`, sends it through a `socket.SOCK_RAW` socket (`IPPROTO_TCP`), and closes
-the socket immediately — reproducing exactly what `hping3 -S -c 1` does, with no external
-binary, no libpcap, no UDP, and no kernel-resident code.
+`struct.pack`, calculates the mandatory IP and TCP checksums, sends it through a
+`socket.SOCK_RAW` socket (`IPPROTO_TCP` with `IP_HDRINCL`), and closes the socket
+immediately — reproducing exactly what `hping3 -S -c 1 -N <id> -M <seq> -L <ack> -w <win>`
+does, with no external binary, no libpcap, no UDP, and no kernel-resident code.
 
 This is strictly in scope: the project README explicitly permits raw sockets for packet
 *sending* (the client already needs `CAP_NET_RAW` / root on the sending side), while
@@ -29,136 +30,133 @@ prohibiting kernel-resident code and packet-capture on the *server* side.
 
 ## 1. Requirements & Constraints
 
-- **REQ-001**: Implement `knockknock/PacketSender.py` containing a single public function `send_syn(host: str, knock_port: int, ip_id: int, seq: int, ack: int, window: int) -> None` that constructs and transmits one TCP SYN packet using `socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)` with `IP_HDRINCL` set.
-- **REQ-002**: The IP header fields encoded in the knock packet (`ip_id`, `seq`, `ack`, `window`) must map identically to the `hping3` flags `-N` (IP ID), `-M` (seq), `-L` (ack), `-w` (window) currently used in `knockknock.py` and `KnockingEndpointConnection.py`.  The on-wire packet format must be byte-for-byte compatible with the daemon's decoding logic.
-- **REQ-003**: Remove `hping3` detection (`existsInPath("hping3")`) from `knockknock.py`.  Replace the `subprocess.call(command, ...)` block with a call to `PacketSender.send_syn(...)`.
-- **REQ-004**: Remove `hping3` subprocess invocation from `knockknock/proxy/KnockingEndpointConnection.py`.  Replace with a call to `PacketSender.send_syn(...)`.
-- **REQ-005**: If the raw socket `bind`/`sendto` call raises `PermissionError` (i.e. the process lacks `CAP_NET_RAW`), both callers must catch the exception and exit with a descriptive error message and code 2 (client) or 3 (proxy), preserving existing exit code contracts.
-- **REQ-006**: The `time.sleep(0.25)` delay following the knock in `KnockingEndpointConnection.sendKnock` must be preserved to allow the daemon processing time before the TCP connection attempt proceeds.
-- **SEC-001**: All packet header fields (`ip_id`, `seq`, `ack`, `window`) must be validated as unsigned integers within their respective protocol field widths (16-bit for `ip_id` and `window`; 32-bit for `seq` and `ack`) before being packed into the packet.  Values outside range must raise `ValueError`.
-- **SEC-002**: The destination IP must be resolved via `socket.getaddrinfo` rather than used raw, to prevent injection of non-IP strings into the socket call.
-- **CON-001**: No new external runtime dependencies may be introduced.  `PacketSender.py` must use only Python standard library modules (`socket`, `struct`, `os`).
-- **CON-002**: The `hping3` binary reference must be completely removed from all Python source files and from `INSTALL`.  Any remaining documentation references must be updated.
+- **REQ-001**: Implement `knockknock/PacketSender.py` containing a public function `send_syn(host: str, knock_port: int, ip_id: int, seq: int, ack: int, window: int) -> None` that constructs and transmits one TCP SYN packet using `socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_TCP)` with `IP_HDRINCL` set.
+- **REQ-002**: The IP and TCP header fields encoded in the knock packet (`ip_id`, `seq`, `ack`, `window`) must map identically to the `hping3` flags `-N` (IP ID), `-M` (seq), `-L` (ack), `-w` (window) currently used in `knockknock.py` and `KnockingEndpointConnection.py`. Specifically, `ack` (holding 4 bytes of ciphertext/HMAC from `struct.unpack('!HIIH', packet_data)`) must be packed into the 32-bit Acknowledgment Number field (bytes 8–11 of the TCP header). The SYN control flag (`0x02`) must be set in the TCP flags field, and the ACK flag must remain unset, matching `hping3 -S -L`.
+- **REQ-003**: `PacketSender.py` must compute the RFC 793 / RFC 9293 standard 16-bit one's complement Internet checksum across the TCP pseudo-header (Source IP, Destination IP, zero byte, protocol 6, TCP length) and the full TCP header. Leaving the TCP checksum as `0x0000` is strictly forbidden because it causes packets to be dropped by intermediate routers and destination network stacks.
+- **REQ-004**: `PacketSender.py` must automatically determine the local egress source IP using standard UDP routing table introspection (`get_egress_ip(dst_ip: str) -> str`) and use an ephemeral source port (`random.randint(1024, 65535)`) rather than reserved port 0.
+- **REQ-005**: Remove `hping3` detection (`existsInPath("hping3")`) and subprocess execution from `knockknock.py`, replacing it with `PacketSender.send_syn(...)`.
+- **REQ-006**: Remove `hping3` subprocess execution from `knockknock/proxy/KnockingEndpointConnection.py`, replacing it with `PacketSender.send_syn(...)`.
+- **REQ-007**: If the raw socket operations raise `PermissionError` or `OSError` (e.g. process lacks `CAP_NET_RAW` / root), callers must handle the error gracefully, exiting with code 2 (client) or code 3 (proxy), preserving legacy exit code contracts.
+- **REQ-008**: The `time.sleep(0.25)` delay following the knock in `KnockingEndpointConnection.sendKnock` must be preserved to allow daemon processing time before the TCP connection attempt proceeds.
+- **SEC-001**: All packet header fields (`ip_id`, `seq`, `ack`, `window`, `knock_port`) must be validated as unsigned integers within their respective protocol field widths (16-bit for `ip_id`, `window`, and `knock_port`; 32-bit for `seq` and `ack`) before packing. Values outside bounds must raise `ValueError`.
+- **SEC-002**: The destination IP must be validated or resolved via `socket.getaddrinfo` rather than used unvalidated, preventing injection of invalid address types.
+- **CON-001**: Zero external dependencies: `PacketSender.py` must use strictly the Python standard library (`socket`, `struct`, `os`, `random`).
+- **CON-002**: The `hping3` binary reference must be completely removed from all Python source files and from `INSTALL`.
 - **CON-003**: All existing quality gates must continue to pass: 100% statement and branch coverage (`--cov-fail-under=100`), 0 surviving gremlins (`pytest --gremlins --strict-pardons`), `flake8` clean, `mypy --strict` clean.
-- **CON-004**: All Docker Compose blackbox E2E tests (`tests/blackbox/run_all.sh`) must pass without modification to the external test contracts.  The blackbox client Dockerfile (`tests/blackbox/Dockerfile.client` if present) must not install `hping3`.
+- **CON-004**: All Docker Compose blackbox E2E tests (`tests/blackbox/run_all.sh`) must pass without modification to the external test contracts. `tests/blackbox/Dockerfile.server` must remove `hping3` from package installation.
 - **GUD-001**: Apply TDD — write a failing unit test for each new behaviour before writing the production implementation (`tdd-rules.md`).
 - **GUD-002**: Apply the full Verification & Validation meta-loop (`verification-validation-rules.md`) before declaring this plan complete.
-- **PAT-001**: Use `unittest.mock.patch("socket.socket")` as the test double for raw socket calls; do not open real raw sockets in unit tests (requires root and a network interface).
-- **PAT-002**: Separate packet-construction logic (pure functions over `struct.pack`) from socket I/O so that the construction can be unit-tested without mocking the socket at all.
+- **PAT-001**: Use `unittest.mock.patch("socket.socket")` as the test double for raw socket calls; do not open real raw sockets in unit tests.
+- **PAT-002**: Clean architectural separation: packet header construction and checksum calculation functions must be pure, deterministic functions without side effects, allowing 100% unit test coverage without socket mocks.
 
 ## 2. Implementation Steps
 
-### Implementation Phase 1: Implement PacketSender
+### Implementation Phase 1: Pure-Python Packet Construction and Checksum Engine
 
-- GOAL-001: Create a pure-Python raw socket SYN packet sender in `knockknock/PacketSender.py` with full unit test coverage.
-
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-001 | **[TDD — Red]** Write failing unit tests in `tests/unit/test_packet_sender.py` for `build_ip_header(src: str, dst: str, ip_id: int, payload_len: int) -> bytes`: (a) returned bytes have length 20; (b) IP version nibble is 4; (c) `ip_id` field appears at bytes 4–5 in network byte order; (d) protocol field is 6 (TCP). | | |
-| TASK-002 | **[TDD — Red]** Add failing unit tests for `build_tcp_header(dst_port: int, seq: int, ack: int, window: int) -> bytes`: (a) returned bytes have length 20; (b) SYN flag (`0x02`) is set; (c) `seq` appears at bytes 4–7; (d) `dst_port` appears at bytes 2–3; (e) `window` appears at bytes 14–15. | | |
-| TASK-003 | **[TDD — Red]** Add a failing unit test for `send_syn(host, knock_port, ip_id, seq, ack, window)`: patch `socket.socket` to a `MagicMock`; assert `setsockopt(IPPROTO_IP, IP_HDRINCL, 1)` is called; assert `sendto` is called with the concatenation of the IP and TCP headers as the first argument and `(host, 0)` as the second; assert the socket is closed. | | |
-| TASK-004 | **[TDD — Red]** Add failing unit tests for validation in `send_syn`: `ValueError` raised when `ip_id > 65535`; `ValueError` raised when `window > 65535`; `ValueError` raised when `seq > 4294967295`; `ValueError` raised when `ack > 4294967295`. | | |
-| TASK-005 | **[TDD — Red]** Add a failing unit test asserting that `send_syn` re-raises `PermissionError` unmodified when the socket raises it on `setsockopt`. | | |
-| TASK-006 | **[TDD — Green]** Create `knockknock/PacketSender.py` implementing `build_ip_header`, `build_tcp_header`, and `send_syn`.  Construct the IP header (20 bytes, `IP_HDRINCL` format: version+IHL, DSCP, total length, id, flags+frag offset, TTL=64, proto=6, checksum placeholder, src IP, dst IP) and TCP header (20 bytes: src port=0, dst port, seq, ack=0, offset+flags SYN, window, checksum placeholder, urgent=0).  IP checksum is computed with the standard one's complement algorithm; TCP checksum is left as zero (accepted by most kernels when `IP_HDRINCL` is set and the NIC computes it).  Make all tests from TASK-001 through TASK-005 pass. | | |
-| TASK-007 | **[Refactor]** Run `flake8 knockknock` and `mypy --strict knockknock`; resolve all findings. | | |
-
-### Implementation Phase 2: Replace hping3 in knockknock.py
-
-- GOAL-002: Remove `hping3` detection and subprocess invocation from the primary client CLI; wire in `PacketSender.send_syn`.
+- GOAL-001: Implement `knockknock/PacketSender.py` with pure functions for IP/TCP header construction, Internet checksum calculation, egress IP discovery, and raw socket transmission.
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-008 | **[TDD — Red]** Write failing unit tests in `tests/unit/test_knockknock_main.py` (or update existing) covering the `main()` path that previously called `hping3`: (a) `PacketSender.send_syn` is called with the correct arguments derived from `profile.encrypt(packed_port)`; (b) `PermissionError` from `send_syn` prints an error and calls `sys.exit(2)`; (c) `existsInPath` is no longer referenced. | | |
-| TASK-009 | **[TDD — Green]** Rewrite the `hping3` block in `knockknock.py`: remove `existsInPath("hping3")` check and `subprocess.call`; replace with `from knockknock.PacketSender import send_syn` and `send_syn(host, knockPort, idField, seqField, ackField, winField)` wrapped in a `try/except PermissionError`. | | |
-| TASK-010 | **[TDD — Red]** Write a failing test confirming `existsInPath` is removed from `knockknock.py` (i.e. it is no longer imported or called; inspect the source with `ast` or `importlib`). | | |
-| TASK-011 | **[Refactor]** Run `flake8` on `knockknock.py` and `mypy --strict knockknock`; resolve all findings. | | |
+| TASK-001 | **[TDD — Red]** Write unit tests in `tests/unit/test_packet_sender.py` for `calculate_checksum(data: bytes) -> int`: (a) test with known RFC 1071 test vectors; (b) test with odd-length byte buffers; (c) test with carry-over addition ensuring proper 16-bit one's complement folding. | | |
+| TASK-002 | **[TDD — Red]** Write unit tests in `tests/unit/test_packet_sender.py` for `build_ip_header(src: str, dst: str, ip_id: int, payload_len: int) -> bytes`: (a) assert header length is 20 bytes; (b) assert IPv4 version (4) and IHL (5); (c) assert `ip_id` is packed in network byte order at bytes 4–5; (d) assert protocol is 6 (TCP); (e) assert valid IP header checksum in bytes 10–11. | | |
+| TASK-003 | **[TDD — Red]** Write unit tests in `tests/unit/test_packet_sender.py` for `build_tcp_header(src_ip: str, dst_ip: str, src_port: int, dst_port: int, seq: int, ack: int, window: int) -> bytes`: (a) assert header length is 20 bytes; (b) assert `dst_port` is at bytes 2–3; (c) assert `seq` is at bytes 4–7; (d) assert `ack` (containing 4 bytes of ciphertext/HMAC) is packed at bytes 8–11; (e) assert data offset is 5 (20 bytes) and flags byte has only SYN (`0x02`) set with ACK flag unset; (f) assert `window` is at bytes 14–15; (g) assert calculated TCP checksum is non-zero and verifies against pseudo-header. | | |
+| TASK-004 | **[TDD — Red]** Write unit tests for `get_egress_ip(dst_ip: str) -> str`: mock `socket.socket` to return a known mock IP; assert that a dummy UDP socket is connected to `(dst_ip, 80)` and `getsockname()[0]` is returned. | | |
+| TASK-005 | **[TDD — Red]** Write unit tests for `send_syn(host, knock_port, ip_id, seq, ack, window)`: (a) assert field validation raises `ValueError` on negative or out-of-range values (`ip_id > 65535`, `window > 65535`, `knock_port > 65535`, `seq > 4294967295`, `ack > 4294967295`); (b) mock socket and assert `socket(AF_INET, SOCK_RAW, IPPROTO_TCP)` created, `IP_HDRINCL` set, and `sendto(ip_header + tcp_header, (dst_ip, 0))` called; (c) assert socket closed in `finally` block; (d) assert `PermissionError` is propagated. | | |
+| TASK-006 | **[TDD — Green]** Create `knockknock/PacketSender.py` implementing `calculate_checksum`, `build_ip_header`, `build_tcp_header`, `get_egress_ip`, and `send_syn`. Pack `ack` accurately into TCP bytes 8–11, set SYN flag, compute pseudo-header TCP checksum, and make all unit tests pass. | | |
+| TASK-007 | **[Refactor]** Run `flake8 knockknock` and `mypy --strict knockknock`; achieve 0 warnings and 0 errors. | | |
 
-### Implementation Phase 3: Replace hping3 in KnockingEndpointConnection
+### Implementation Phase 2: Client CLI Migration
 
-- GOAL-003: Remove the `hping3` subprocess block from the proxy's knocking path; wire in `PacketSender.send_syn`.
-
-| Task | Description | Completed | Date |
-|------|-------------|-----------|------|
-| TASK-012 | **[TDD — Red]** Write failing unit tests for `KnockingEndpointConnection.sendKnock`: (a) `PacketSender.send_syn` is called with the correct `(host, knock_port, id_field, seq_field, ack_field, win_field)` values; (b) `time.sleep(0.25)` is still called after `send_syn`; (c) `PermissionError` from `send_syn` is caught, logged via `syslog`, and causes `os._exit(3)`. | | |
-| TASK-013 | **[TDD — Green]** Rewrite `sendKnock` in `knockknock/proxy/KnockingEndpointConnection.py`: remove `subprocess` import and `hping3` command list; replace with `from knockknock.PacketSender import send_syn` and `send_syn(host, knock_port, id_field, seq_field, ack_field, win_field)` wrapped in `try/except PermissionError`. | | |
-| TASK-014 | **[Refactor]** Run `flake8 knockknock` and `mypy --strict knockknock`; resolve all findings. | | |
-
-### Implementation Phase 4: Documentation & Dockerfile Cleanup
-
-- GOAL-004: Remove all `hping3` references from documentation and container definitions.
+- GOAL-002: Replace `hping3` subprocess invocation in `knockknock.py` with `PacketSender.send_syn`.
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-015 | In `INSTALL`, replace the `hping3` installation instructions with a note that `knockknock` no longer requires `hping3` — raw socket packet sending is handled internally.  Update the Prerequisites section accordingly. | | |
-| TASK-016 | Search for `hping3` across the entire repository with `grep -r "hping3" /workspaces/knockknock` and confirm zero hits in Python source files.  Update or remove any remaining references in shell scripts, Dockerfiles, or documentation. | | |
-| TASK-017 | If `tests/blackbox/Dockerfile.client` installs `hping3`, remove that `apt-get install` line. | | |
+| TASK-008 | **[TDD — Red]** Write unit tests in `tests/unit/test_knockknock_main.py` covering `main()` knock dispatch: (a) assert `send_syn` is called with arguments `(host, knockPort, idField, seqField, ackField, winField)` derived from profile encryption; (b) assert `PermissionError` from `send_syn` logs an error message and terminates with `sys.exit(2)`; (c) assert `existsInPath("hping3")` is no longer called or needed. | | |
+| TASK-009 | **[TDD — Green]** Update `knockknock.py`: delete `existsInPath`, replace `hping3` subprocess logic with `PacketSender.send_syn(...)` wrapped in `try/except (PermissionError, OSError)`. | | |
+| TASK-010 | **[Refactor]** Run `flake8 knockknock.py` and `mypy --strict knockknock.py`; achieve 0 warnings and 0 errors. | | |
 
-### Implementation Phase 5: Verification & Validation Convergence
+### Implementation Phase 3: Proxy Subsystem Migration
 
-- GOAL-005: Execute the full outer meta-loop until convergence with zero changes on the final pass.
+- GOAL-003: Replace `hping3` subprocess invocation in `KnockingEndpointConnection.py` with `PacketSender.send_syn`.
 
 | Task | Description | Completed | Date |
 |------|-------------|-----------|------|
-| TASK-018 | Run `pytest --cov=knockknock --cov-branch --cov-report=term-missing --cov-report=annotate:cov_annotate --cov-fail-under=100`. Inspect `cov_annotate/` for any `!`-prefixed lines and add targeted tests to achieve 100% statement and branch coverage. | | |
-| TASK-019 | Run `pytest --gremlins --gremlin-targets=knockknock --strict-pardons`. For any surviving gremlin use `pytest --gremlins --gremlin-explain=<id>` to diagnose; add a targeted assertion or simplify the branch. | | |
-| TASK-020 | Run `python3 -m compileall -q knockknock` and `flake8 knockknock`; confirm 0 errors. | | |
-| TASK-021 | Run `pip install -e .` and verify CLI smoke tests: `knockknock` exits 2, `knockknock-genprofile` exits 3, `knockknock-daemon` exits 3, `knockknock-proxy` exits 3. | | |
-| TASK-022 | Execute the inner code-review loop (`code-review-and-quality` skill) until 0 findings remain; set `changes_made = true` for each finding addressed. | | |
-| TASK-023 | Execute the inner security-review loop (`security-review` skill) until 0 findings remain; set `changes_made = true` for each finding addressed. | | |
-| TASK-024 | Run `tests/blackbox/run_all.sh` against the updated Docker images and confirm all scenarios pass end-to-end (knock → connect → port-closes). | | |
-| TASK-025 | Perform the outer convergence check: if any tasks TASK-018 through TASK-024 required code or test changes, restart from TASK-018.  Declare convergence only when a full pass completes with zero changes. | | |
+| TASK-011 | **[TDD — Red]** Write unit tests in `tests/unit/test_proxy_endpoints.py` for `KnockingEndpointConnection.sendKnock`: (a) mock `send_syn` and assert it is called with `(host, knock_port, id_field, seq_field, ack_field, win_field)`; (b) assert `time.sleep(0.25)` is executed after `send_syn`; (c) assert `PermissionError` from `send_syn` logs via syslog and exits with `os._exit(3)`. | | |
+| TASK-012 | **[TDD — Green]** Update `knockknock/proxy/KnockingEndpointConnection.py`: remove `subprocess` and `os.devnull` imports; replace `hping3` invocation with `PacketSender.send_syn(...)` wrapped in `try/except (PermissionError, OSError)`. | | |
+| TASK-013 | **[Refactor]** Run `flake8 knockknock` and `mypy --strict knockknock`; achieve 0 warnings and 0 errors. | | |
+
+### Implementation Phase 4: Container Environment & Documentation Cleanup
+
+- GOAL-004: Remove `hping3` package requirements from documentation and Docker test images.
+
+| Task | Description | Completed | Date |
+|------|-------------|-----------|------|
+| TASK-014 | Update `tests/blackbox/Dockerfile.server`: remove `hping3` from `apt-get install`. | | |
+| TASK-015 | Update `INSTALL`: remove `hping3` requirement for clients, documenting that client packet generation is fully native in Python standard library requiring only `CAP_NET_RAW` / root. | | |
+| TASK-016 | Verify zero occurrences of `hping3` in source and shell files with `grep -rn "hping3" knockknock knockknock.py tests/blackbox/*.sh`. | | |
+
+### Implementation Phase 5: Verification & Validation Meta-Loop Convergence
+
+- GOAL-005: Execute the full verification-validation meta-loop, ensuring 100% coverage, 0 surviving gremlins, and clean blackbox tests.
+
+| Task | Description | Completed | Date |
+|------|-------------|-----------|------|
+| TASK-017 | Run `pytest --cov=knockknock --cov-branch --cov-report=term-missing --cov-report=annotate:cov_annotate --cov-fail-under=100`. Inspect `cov_annotate/` and resolve any missing statements or branches. | | |
+| TASK-018 | Run `pytest --gremlins --gremlin-targets=knockknock --strict-pardons`. Eliminate all surviving mutants until `Survived: 0`. | | |
+| TASK-019 | Run `python3 -m compileall -q knockknock` and `flake8 knockknock`. | | |
+| TASK-020 | Run `pip install -e .` and verify CLI smoke tests. | | |
+| TASK-021 | Execute inner code-review loop (`code-review-and-quality` skill) until 0 findings remain. | | |
+| TASK-022 | Execute inner security-review loop (`security-review` skill) until 0 findings remain. | | |
+| TASK-023 | Execute Docker Compose blackbox E2E test suite (`tests/blackbox/run_all.sh`) confirming real container knock-and-open and SOCKS5 proxy flows succeed without `hping3`. | | |
+| TASK-024 | Convergence check: If any modifications were made during tasks TASK-017 through TASK-023, reset and restart from TASK-017 until outer loop converges with 0 changes on final pass. | | |
 
 ## 3. Alternatives
 
-- **ALT-001**: Wrap `scapy` for packet construction.  Rejected — `scapy` is a large dependency that uses libpcap for capture; the README explicitly prohibits libpcap (`README` l.33–34); it would also violate CON-001.
-- **ALT-002**: Use the `pyping3` or `impacket` library for raw packet construction.  Rejected — both introduce external dependencies (CON-001 violation) and are heavier than a 60-line `struct.pack` implementation.
-- **ALT-003**: Keep `hping3` but bundle it inside the Docker client image only.  Rejected — this leaves the external binary dependency intact for native installs and adds image bloat; the goal is zero-dependency packet sending.
-- **ALT-004**: Use `ctypes` to call `libnet` directly.  Rejected — introduces a native library dependency and contradicts the project's "safe language" philosophy (`README` l.28–30).
+- **ALT-001**: Wrap `scapy` for packet generation. Rejected: `scapy` is a massive dependency that includes libpcap and packet-sniffing facilities explicitly rejected by `README` (ll. 33–34), violating CON-001.
+- **ALT-002**: Leave TCP checksum as `0x0000` to avoid checksum computation code. Rejected: violates RFC 793 / RFC 9293 and causes packet rejection by intermediate routers and target OS kernel TCP stacks.
+- **ALT-003**: Use UDP instead of raw TCP SYN packets. Rejected: explicitly violates `README` l. 35 ("I don't want something that uses UDP").
+- **ALT-004**: Use `ctypes` bindings to `libnet`. Rejected: violates the safe-language requirement (`README` ll. 28–30) and introduces native C library packaging complexity.
 
 ## 4. Dependencies
 
-- **DEP-001**: Python standard library `socket` module — `socket.AF_INET`, `socket.SOCK_RAW`, `socket.IPPROTO_TCP`, `socket.IP_HDRINCL`.  Available in all CPython >= 3.3 on Linux with `CAP_NET_RAW`.
-- **DEP-002**: Python standard library `struct` module — used for header field packing.
-- **DEP-003**: `CAP_NET_RAW` capability (or `uid == 0`) on the *client* host — unchanged from the existing `hping3` requirement (which also requires root).
-- **DEP-004**: `pycryptodome >= 3.20.0` — unchanged sole external Python runtime dependency.
+- **DEP-001**: Python standard library `socket` module (`socket.AF_INET`, `socket.SOCK_RAW`, `socket.IPPROTO_TCP`, `socket.IP_HDRINCL`).
+- **DEP-002**: Python standard library `struct` and `random` modules.
+- **DEP-003**: Linux capability `CAP_NET_RAW` (or `uid == 0`) on client host — unchanged requirement from legacy `hping3`.
+- **DEP-004**: `pycryptodome >= 3.20.0` — sole external runtime dependency.
 
 ## 5. Files
 
-- **FILE-001**: `knockknock/PacketSender.py` — **New file**. Pure-Python raw socket SYN sender: `build_ip_header`, `build_tcp_header`, `send_syn`.
-- **FILE-002**: `knockknock.py` — Updated to call `PacketSender.send_syn`; `existsInPath` and `subprocess` hping3 block removed.
-- **FILE-003**: `knockknock/proxy/KnockingEndpointConnection.py` — Updated to call `PacketSender.send_syn`; `subprocess` hping3 block removed.
-- **FILE-004**: `tests/unit/test_packet_sender.py` — **New file**. Unit tests for `build_ip_header`, `build_tcp_header`, `send_syn` (socket mocked), and field validation.
-- **FILE-005**: `tests/unit/test_knockknock_main.py` — Updated to test the `send_syn` call path and `PermissionError` handling.
-- **FILE-006**: `tests/unit/test_knocking_endpoint_connection.py` — Updated to mock `send_syn` and verify correct arguments and `PermissionError` → `os._exit(3)` handling.
-- **FILE-007**: `INSTALL` — Updated to remove `hping3` from prerequisites and note that packet sending is now handled internally.
-- **FILE-008**: `tests/blackbox/Dockerfile.client` — Updated to remove `hping3` installation (if present).
+- **FILE-001**: `knockknock/PacketSender.py` — **New module**. Native raw socket packet builder, Internet checksum calculator, and SYN sender.
+- **FILE-002**: `knockknock.py` — Client CLI entry point; replaced `hping3` subprocess with `PacketSender.send_syn`.
+- **FILE-003**: `knockknock/proxy/KnockingEndpointConnection.py` — Proxy knock sender; replaced `hping3` subprocess with `PacketSender.send_syn`.
+- **FILE-004**: `tests/unit/test_packet_sender.py` — **New test suite**. Unit tests for packet builder, checksum calculation, and socket transmission.
+- **FILE-005**: `tests/unit/test_knockknock_main.py` — Unit tests for CLI knock dispatch.
+- **FILE-006**: `tests/unit/test_proxy_endpoints.py` — Unit tests for proxy knock connection.
+- **FILE-007**: `tests/blackbox/Dockerfile.server` — Blackbox test image; removed `hping3` installation.
+- **FILE-008**: `INSTALL` — Documentation updated to remove `hping3` requirement.
 
 ## 6. Testing
 
-- **TEST-001**: Unit tests for `build_ip_header` — length, version, ID, protocol field assertions.
-- **TEST-002**: Unit tests for `build_tcp_header` — length, SYN flag, seq, dst_port, window field assertions.
-- **TEST-003**: Unit tests for `send_syn` with mocked socket — `IP_HDRINCL` setsockopt call; `sendto` argument (concatenated headers, destination tuple); socket closed after send.
-- **TEST-004**: Unit tests for `send_syn` field validation — `ValueError` for out-of-range `ip_id`, `window`, `seq`, `ack`.
-- **TEST-005**: Unit test for `send_syn` `PermissionError` propagation.
-- **TEST-006**: Unit tests for `knockknock.main()` — `send_syn` called with correct arguments derived from `profile.encrypt`; `PermissionError` → `sys.exit(2)`.
-- **TEST-007**: Unit tests for `KnockingEndpointConnection.sendKnock` — `send_syn` called with correct arguments; `time.sleep(0.25)` called; `PermissionError` → `os._exit(3)`.
-- **TEST-008**: Coverage gate — `pytest --cov=knockknock --cov-branch --cov-report=annotate:cov_annotate --cov-fail-under=100` passes with 0 uncovered lines.
-- **TEST-009**: Mutation gate — `pytest --gremlins --gremlin-targets=knockknock --strict-pardons` reports `Survived: 0`.
-- **TEST-010**: Blackbox E2E — `tests/blackbox/run_all.sh` passes all knock scenarios without `hping3` present in the client image.
+- **TEST-001**: Unit test suite for RFC 1071 Internet checksum implementation with known test vectors.
+- **TEST-002**: Unit test suite asserting IP header structure, network byte order, and checksum verification.
+- **TEST-003**: Unit test suite asserting TCP header structure: 4-byte `ack` field preserves ciphertext/HMAC data, SYN control flag set, ACK flag unset, and valid TCP pseudo-header checksum.
+- **TEST-004**: Unit test asserting input validation for field bounds (`ip_id`, `seq`, `ack`, `window`, `knock_port`).
+- **TEST-005**: Unit test asserting socket lifecycle, `IP_HDRINCL` option configuration, and clean descriptor closure.
+- **TEST-006**: 100% statement and branch coverage across `knockknock/PacketSender.py` (`--cov-fail-under=100`).
+- **TEST-007**: Mutation testing gate: 100% mutation slaughter rate with `pytest-gremlins` (`Survived: 0`).
+- **TEST-008**: Full blackbox Docker Compose suite passing cleanly without `hping3` installed on server or client.
 
 ## 7. Risks & Assumptions
 
-- **RISK-001**: Kernel IP checksum handling varies.  Some kernels require the IP checksum field to be pre-computed when `IP_HDRINCL` is set; others recompute it automatically.  *Mitigation*: `PacketSender.build_ip_header` always computes the one's complement checksum correctly regardless of kernel behaviour; the TCP checksum is left as zero (kernel fills it in via `IPPROTO_TCP` socket with `IP_HDRINCL`).
-- **RISK-002**: `socket.SOCK_RAW` with `IPPROTO_TCP` and `IP_HDRINCL` is blocked inside Docker containers that lack `CAP_NET_RAW`.  *Mitigation*: The blackbox client container must be run with `--cap-add NET_RAW` (or `cap_add: [NET_RAW]` in `docker-compose.yml`); this mirrors the existing `hping3` requirement.
-- **RISK-003**: Some CI runners prohibit raw sockets entirely (e.g., GitHub Actions hosted runners).  *Mitigation*: Unit tests mock the socket; only the blackbox E2E job needs real raw socket capability, and that job runs inside Docker with explicit capability grants.
-- **ASSUMPTION-001**: The daemon-side packet decoding logic (field extraction from the IP/TCP headers logged by `nftables`/`kern.log`) is unchanged; `PacketSender` reproduces the identical field layout that `hping3 -S -N -M -L -w` produced.
-- **ASSUMPTION-002**: The client host runs Linux with kernel >= 3.0 and standard POSIX socket semantics for `SOCK_RAW`/`IP_HDRINCL`.  macOS and Windows raw socket semantics differ; they are out of scope per the existing project posture.
+- **RISK-001**: The host network interface or intermediate firewall rejects raw TCP packets with unfamiliar sequence/acknowledgment numbers. *Mitigation*: The TCP format emitted by `PacketSender` is bit-for-bit identical to the packet emitted by `hping3`, which has functioned reliably in production and blackbox environments.
+- **RISK-002**: Docker containers executing client commands lack `CAP_NET_RAW`. *Mitigation*: `docker-compose.yml` and test runner scripts already grant `--cap-add NET_RAW` for the client container.
+- **ASSUMPTION-001**: Client execution environment is Linux kernel >= 3.0 supporting `SOCK_RAW` and `IP_HDRINCL`.
+- **ASSUMPTION-002**: Knock packets are IPv4.
 
 ## 8. Related Specifications / Further Reading
 
-- [Existing Modernisation Plan (Step 3)](file:///workspaces/knockknock/docs/plans/refactor-modernise-codebase-1.md)
-- [nftables Migration Plan](file:///workspaces/knockknock/docs/plans/refactor-nftables-migration-1.md)
+- [nftables Migration Implementation Plan](file:///workspaces/knockknock/docs/plans/refactor-nftables-migration-1.md)
 - [Verification & Validation Rules](file:///workspaces/knockknock/.agents/rules/verification-validation-rules.md)
-- [Linux `raw(7)` man page — IP_HDRINCL semantics](https://man7.org/linux/man-pages/man7/raw.7.html)
-- [RFC 793 — Transmission Control Protocol (TCP header format)](https://www.rfc-editor.org/rfc/rfc793)
-- [RFC 791 — Internet Protocol (IP header format)](https://www.rfc-editor.org/rfc/rfc791)
+- [RFC 793 – Transmission Control Protocol](https://www.rfc-editor.org/rfc/rfc793)
+- [RFC 1071 – Computing the Internet Checksum](https://www.rfc-editor.org/rfc/rfc1071)
+- [Linux man 7 raw](https://man7.org/linux/man-pages/man7/raw.7.html)

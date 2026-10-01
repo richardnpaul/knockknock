@@ -3,7 +3,6 @@ Requirements:
     * Python >= 3.10 (apt-get install python3 python3-pip)
     * PyCryptodome >= 3.20.0 (pip install pycryptodome; installed automatically)
     * iptables (server only -- apt-get install iptables)
-    * hping3 (client only -- apt-get install hping3)
 
 Installing The Server:
 
@@ -65,9 +64,9 @@ Configuring The Server:
 Configuring The Client:
 
     Follow the installation instructions to install knockknock on the client
-    machine. The client also requires 'hping3' to transmit raw SYN packets:
-
-      * sudo apt-get install hping3
+    machine. Packet generation is handled natively using Python's standard library
+    (socket.SOCK_RAW with IP_HDRINCL) without external binary dependencies like hping3.
+    Clients require root or the Linux CAP_NET_RAW capability to transmit raw SYN packets.
 
     To configure the client, copy the profile directory generated on the
     server to the client machine under '~/.knockknock/<serverHostName>/'.

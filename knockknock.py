@@ -4,10 +4,10 @@ import argparse
 import os
 from pathlib import Path
 import struct
-import subprocess
 import sys
 from typing import List, NoReturn, Optional, Tuple
 
+from knockknock.PacketSender import send_syn
 from knockknock.Profile import Profile
 
 
@@ -56,18 +56,6 @@ def verifyPermissions() -> None:
         sys.exit(2)
 
 
-def existsInPath(command: str) -> Optional[str]:
-    def isExe(fpath: Path) -> bool:
-        return fpath.is_file() and os.access(fpath, os.X_OK)
-
-    for path_str in os.environ.get("PATH", "").split(os.pathsep):
-        exe_file = Path(path_str) / command
-        if isExe(exe_file):
-            return str(exe_file)
-
-    return None
-
-
 def main(argv: Optional[List[str]] = None) -> None:
     if argv is None:
         argv = sys.argv[1:]
@@ -78,33 +66,16 @@ def main(argv: Optional[List[str]] = None) -> None:
     profile = getProfile(host)
     packed_port = struct.pack('!H', int(port))
     packetData = profile.encrypt(packed_port)
-    knockPort = profile.getKnockPort()
+    knockPort = int(profile.getKnockPort())
 
     idField, seqField, ackField, winField = struct.unpack('!HIIH', packetData)
 
-    hping = existsInPath("hping3")
-    if hping is None:
-        print("Error, you must install hping3 first.")
-        sys.exit(2)
-
-    command = [
-        hping, "-S", "-c", "1",
-        "-p", str(knockPort),
-        "-N", str(idField),
-        "-w", str(winField),
-        "-M", str(seqField),
-        "-L", str(ackField),
-        host,
-    ]
-
     try:
-        with open('/dev/null', 'w') as devnull:
-            subprocess.call(command, shell=False, stdout=devnull, stderr=subprocess.STDOUT)
+        send_syn(host, knockPort, idField, seqField, ackField, winField)
         print('Knock sent.')
-
-    except OSError:
-        print("Error: Do you have hping3 installed?")
-        sys.exit(3)
+    except (PermissionError, OSError) as e:
+        print(f"Error sending knock packet: {e}")
+        sys.exit(2)
 
 
 if __name__ == '__main__':
