@@ -1,0 +1,22 @@
+services:
+  knockknock-server:
+    build:
+      context: ../..
+      dockerfile: tests/blackbox/Dockerfile.server
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - SYSLOG
+    networks:
+      knock_net:
+        ipv4_address: 172.28.0.10
+    volumes:
+      - ./shared:/shared
+
+networks:
+  knock_net:
+    name: knock_net
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

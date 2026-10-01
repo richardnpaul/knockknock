@@ -94,10 +94,12 @@ class Profile:
         if (self.counterFile == None):
             self.counterFile = open(self.directory + "/counter", 'r+')
 
+        self.counterFile.seek(0)
         counter = self.counterFile.readline()
         counter = counter.rstrip("\n")
 
         return int(counter)
+
 
     def loadConfig(self):
         config = configparser.ConfigParser()
