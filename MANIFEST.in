@@ -1,0 +1,11 @@
+include COPYING
+include LICENCE
+include README
+include INSTALL
+include config
+include minimal-firewall.sh
+include knockknock-daemon.py
+include knockknock-genprofile.py
+include knockknock-proxy.py
+include knockknock.py
+include knockknock/py.typed

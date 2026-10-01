@@ -20,6 +20,10 @@ trap cleanup EXIT
 rm -rf "$SHARED_DIR"
 mkdir -p "$SHARED_DIR"
 
+# Build server container image
+echo "# Building server container image via Docker Compose..."
+docker compose -f "$COMPOSE_FILE" build
+
 # Test 1: Local CLI profile generation
 echo "# Running Test 1: knockknock-genprofile CLI"
 if bash "$SCRIPT_DIR/test_genprofile_cli.sh"; then
@@ -29,9 +33,9 @@ else
     exit 1
 fi
 
-# Build and start server container
+# Start server container
 echo "# Starting server container via Docker Compose..."
-docker compose -f "$COMPOSE_FILE" up -d --build
+docker compose -f "$COMPOSE_FILE" up -d
 
 # Wait for server readiness
 echo "# Waiting for server readiness..."

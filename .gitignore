@@ -10,3 +10,4 @@ __pycache__/
 coverage/
 cov_annotate/
 .gremlins/
+.actrc
