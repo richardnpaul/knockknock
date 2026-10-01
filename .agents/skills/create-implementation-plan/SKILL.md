@@ -43,7 +43,7 @@ Plans must consist of discrete, atomic phases containing executable tasks. Each 
 
 ## Output File Specifications
 
-- Save implementation plan files in `/plan/` directory
+- Save implementation plan files in `docs/plans/` directory
 - Use naming convention: `[purpose]-[component]-[version].md`
 - Purpose prefixes: `upgrade|refactor|feature|data|infrastructure|process|architecture|design`
 - Example: `upgrade-system-command-4.md`, `feature-auth-module-1.md`
@@ -68,7 +68,7 @@ Run these checks before finalizing the plan. Checks (1) and (2) target declarati
 
 ```bash
 # Set PLAN_FILE to the plan being validated.
-PLAN_FILE="/plan/<purpose>-<component>-<version>.md"
+PLAN_FILE="/docs/plans/<purpose>-<component>-<version>.md"
 
 # 1) Duplicate TASK / GOAL declarations in table rows.
 grep -oE '\| (TASK|GOAL)-[0-9]+ \|' "$PLAN_FILE" \

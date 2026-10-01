@@ -1,5 +1,4 @@
-import asyncore
-import socket
+import asyncio
 import struct
 import unittest
 from unittest.mock import MagicMock, patch
@@ -9,16 +8,10 @@ from knockknock.proxy.KnockingEndpointConnection import KnockingEndpointConnecti
 
 
 class TestEndpointConnection(unittest.TestCase):
-    @patch.object(EndpointConnection, "connect")
-    @patch.object(EndpointConnection, "create_socket")
-    def setUp(self, mock_create_socket, mock_connect):
-        asyncore.socket_map.clear()
+
+    def setUp(self):
         self.mock_shuttle = MagicMock()
         self.conn = EndpointConnection(self.mock_shuttle, "127.0.0.1", 8080)
-        self.conn.socket = MagicMock()
-
-    def tearDown(self):
-        asyncore.socket_map.clear()
 
     def test_init_state(self):
         self.assertEqual(self.conn.destination, ("127.0.0.1", 8080))
@@ -26,90 +19,144 @@ class TestEndpointConnection(unittest.TestCase):
         self.assertFalse(self.conn.closed)
         self.assertEqual(self.conn.connectAttempts, 0)
         self.assertIs(self.conn.shuttle, self.mock_shuttle)
+        self.assertIsNone(self.conn.reader)
+        self.assertIsNone(self.conn.writer)
+
+    def test_async_connect_success(self):
+        async def _run():
+            with patch("asyncio.open_connection") as mock_open:
+                mock_reader = MagicMock()
+                mock_writer = MagicMock()
+                mock_sock = MagicMock()
+                mock_sock.getsockname.return_value = ("192.168.1.10", 12345)
+                mock_writer.get_extra_info.return_value = mock_sock
+                mock_open.return_value = (mock_reader, mock_writer)
+
+                self.assertFalse(self.conn.closed)
+                result = await self.conn.connect()
+                self.assertIs(result, True)
+                self.assertEqual(self.conn.connectAttempts, 1)
+                self.assertIs(self.conn.reader, mock_reader)
+                self.assertIs(self.conn.writer, mock_writer)
+                self.mock_shuttle.connectSucceeded.assert_called_once_with("192.168.1.10", 12345)
+
+        asyncio.run(_run())
+
+    def test_async_connect_retries_and_fails(self):
+        async def _run():
+            self.assertFalse(self.conn.closed)
+            with patch("asyncio.open_connection", side_effect=OSError("connection refused")):
+                with patch.object(self.conn, "reconnect_hook") as mock_hook:
+                    result = await self.conn.connect()
+                    self.assertIs(result, False)
+                    self.assertEqual(self.conn.connectAttempts, 3)
+                    self.assertEqual(mock_hook.call_count, 2)
+                    self.assertTrue(self.conn.closed)
+                    self.mock_shuttle.handle_close.assert_called_once()
+
+        asyncio.run(_run())
+
+    def test_getsockname_fallback_and_writer(self):
+        self.assertEqual(self.conn.getsockname(), ("127.0.0.1", 0))
+
+        mock_writer = MagicMock()
+        mock_writer.get_extra_info.return_value = None
+        self.conn.writer = mock_writer
+        self.assertEqual(self.conn.getsockname(), ("127.0.0.1", 0))
+
+        mock_sock = MagicMock()
+        mock_sock.getsockname.return_value = ("10.0.0.2", 9999)
+        mock_writer.get_extra_info.return_value = mock_sock
+        self.assertEqual(self.conn.getsockname(), ("10.0.0.2", 9999))
 
     def test_handle_connect(self):
-        self.conn.socket.getsockname.return_value = ("192.168.1.50", 54321)
-        self.conn.handle_connect()
-        self.mock_shuttle.connectSucceeded.assert_called_once_with("192.168.1.50", 54321)
+        with patch.object(self.conn, "getsockname", return_value=("192.168.1.50", 54321)):
+            self.conn.handle_connect()
+            self.mock_shuttle.connectSucceeded.assert_called_once_with("192.168.1.50", 54321)
 
-    @patch.object(EndpointConnection, "close")
-    def test_handle_close(self, mock_close):
+    def test_handle_close(self):
+        mock_writer = MagicMock()
+        self.conn.writer = mock_writer
+
         self.assertFalse(self.conn.closed)
         self.conn.handle_close()
         self.assertTrue(self.conn.closed)
         self.mock_shuttle.handle_close.assert_called_once()
-        mock_close.assert_called_once()
+        mock_writer.close.assert_called_once()
+        self.assertIsNone(self.conn.writer)
+        self.assertIsNone(self.conn.reader)
 
         # Second close should be no-op
         self.mock_shuttle.handle_close.reset_mock()
-        mock_close.reset_mock()
+        mock_writer.close.reset_mock()
         self.conn.handle_close()
         self.mock_shuttle.handle_close.assert_not_called()
-        mock_close.assert_not_called()
+        mock_writer.close.assert_not_called()
 
-    @patch.object(EndpointConnection, "reconnect")
-    def test_handle_error(self, mock_reconnect):
-        self.conn.handle_error()
-        mock_reconnect.assert_called_once()
+    def test_close_handles_oserror(self):
+        mock_writer = MagicMock()
+        mock_writer.close.side_effect = OSError("close error")
+        self.conn.writer = mock_writer
+        self.conn.close()
+        self.assertIsNone(self.conn.writer)
 
-    @patch.object(EndpointConnection, "connect")
-    @patch.object(EndpointConnection, "create_socket")
-    @patch.object(EndpointConnection, "close")
-    def test_reconnect_attempts_under_limit(self, mock_close, mock_create_socket, mock_connect):
+    def test_handle_error(self):
+        with patch.object(self.conn, "reconnect") as mock_reconnect:
+            self.conn.handle_error()
+            mock_reconnect.assert_called_once()
+
+    def test_reconnect_attempts_under_limit(self):
         self.assertEqual(self.conn.connectAttempts, 0)
-        
+
         # 1st reconnect
         self.conn.reconnect()
         self.assertEqual(self.conn.connectAttempts, 1)
-        mock_close.assert_called_once()
-        mock_create_socket.assert_called_once_with(socket.AF_INET, socket.SOCK_STREAM)
-        mock_connect.assert_called_once_with(("127.0.0.1", 8080))
 
         # 2nd reconnect
         self.conn.reconnect()
         self.assertEqual(self.conn.connectAttempts, 2)
-        self.assertEqual(mock_close.call_count, 2)
 
         # 3rd reconnect
         self.conn.reconnect()
         self.assertEqual(self.conn.connectAttempts, 3)
-        self.assertEqual(mock_close.call_count, 3)
 
-        # 4th reconnect - should not proceed as connectAttempts is now 3 (not < 3)
+        # 4th reconnect - should not proceed as connectAttempts is now 3
         self.conn.reconnect()
         self.assertEqual(self.conn.connectAttempts, 3)
-        self.assertEqual(mock_close.call_count, 3)
 
-    @patch.object(EndpointConnection, "recv")
-    def test_handle_read(self, mock_recv):
-        mock_recv.return_value = b"incoming payload"
-        self.conn.handle_read()
-        mock_recv.assert_called_once_with(4096)
+    def test_reconnect_hook_default_noop(self):
+        self.conn.reconnect_hook()
+
+    def test_handle_read(self):
+        self.conn.handle_read(b"incoming payload")
         self.mock_shuttle.receivedData.assert_called_once_with(b"incoming payload")
 
-    @patch.object(EndpointConnection, "send")
-    def test_write_when_open(self, mock_send):
+        self.conn.handle_read(None)
+        self.mock_shuttle.receivedData.assert_called_with(b"")
+
+    def test_write_when_open(self):
+        mock_writer = MagicMock()
+        self.conn.writer = mock_writer
         self.conn.closed = False
         self.conn.write(b"data to send")
-        mock_send.assert_called_once_with(b"data to send")
+        mock_writer.write.assert_called_once_with(b"data to send")
 
-    @patch.object(EndpointConnection, "send")
-    def test_write_when_closed(self, mock_send):
+    def test_write_when_closed(self):
+        mock_writer = MagicMock()
+        self.conn.writer = mock_writer
         self.conn.closed = True
         self.conn.write(b"data to send")
-        mock_send.assert_not_called()
+        mock_writer.write.assert_not_called()
 
 
 class TestKnockingEndpointConnection(unittest.TestCase):
+
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
     @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    @patch.object(EndpointConnection, "connect")
-    @patch.object(EndpointConnection, "create_socket")
-    def test_init_and_send_knock(self, mock_create_socket, mock_connect, mock_subproc, mock_sleep):
+    def test_init_and_send_knock(self, mock_subproc, mock_sleep):
         mock_shuttle = MagicMock()
         mock_profile = MagicMock()
         mock_profile.getKnockPort.return_value = 22
-        # Pack 12 bytes for !HIIH: id=100, seq=200000, ack=300000, win=4096
         encrypted_bytes = struct.pack("!HIIH", 100, 200000, 300000, 4096)
         mock_profile.encrypt.return_value = encrypted_bytes
 
@@ -141,10 +188,7 @@ class TestKnockingEndpointConnection(unittest.TestCase):
 
     @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
     @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
-    @patch.object(EndpointConnection, "connect")
-    @patch.object(EndpointConnection, "create_socket")
-    @patch.object(EndpointConnection, "reconnect")
-    def test_reconnect_sends_knock(self, mock_parent_reconnect, mock_create_socket, mock_connect, mock_subproc, mock_sleep):
+    def test_reconnect_sends_knock(self, mock_subproc, mock_sleep):
         mock_shuttle = MagicMock()
         mock_profile = MagicMock()
         mock_profile.getKnockPort.return_value = 22
@@ -157,4 +201,20 @@ class TestKnockingEndpointConnection(unittest.TestCase):
 
         knocking_conn.reconnect()
         self.assertEqual(mock_profile.encrypt.call_count, 2)
-        mock_parent_reconnect.assert_called_once()
+        self.assertEqual(knocking_conn.connectAttempts, 1)
+
+    @patch("knockknock.proxy.KnockingEndpointConnection.time.sleep")
+    @patch("knockknock.proxy.KnockingEndpointConnection.subprocess.call")
+    def test_reconnect_hook_sends_knock(self, mock_subproc, mock_sleep):
+        mock_shuttle = MagicMock()
+        mock_profile = MagicMock()
+        mock_profile.getKnockPort.return_value = 22
+        mock_profile.encrypt.return_value = struct.pack("!HIIH", 1, 2, 3, 4)
+
+        knocking_conn = KnockingEndpointConnection(
+            mock_shuttle, mock_profile, "10.0.0.5", 443
+        )
+        self.assertEqual(mock_profile.encrypt.call_count, 1)
+
+        knocking_conn.reconnect_hook()
+        self.assertEqual(mock_profile.encrypt.call_count, 2)

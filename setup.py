@@ -1,4 +1,6 @@
-import sys, os, shutil
+import os
+import shutil
+import sys
 from setuptools import setup
 
 if len(sys.argv) > 1 and sys.argv[1] != "sdist":
@@ -7,31 +9,14 @@ if len(sys.argv) > 1 and sys.argv[1] != "sdist":
     shutil.copyfile("knockknock-proxy.py", "knockknock/knockknock-proxy")
     shutil.copyfile("knockknock.py", "knockknock/knockknock")
 
-setup  (name         = 'knockknock',
-        version      = '0.8',
-        description  = 'A cryptographic single-packet port-knocker.',
-        author       = 'Moxie Marlinspike',
-        author_email = 'moxie@thoughtcrime.org',
-        url          = 'http://www.thoughtcrime.org/software/knockknock/',
-        license      = 'GPL',
-        packages     = ["knockknock", "knockknock.proxy"],
-        install_requires = [
-            'pycryptodome>=3.20.0',
-            'pyasyncore>=1.0.4',
-            'pyasynchat>=1.0.4'
-        ],
-        scripts      = ['knockknock/knockknock-daemon',
-                        'knockknock/knockknock-genprofile',
-                        'knockknock/knockknock-proxy',
-                        'knockknock/knockknock'],
-        data_files   = [("", ["minimal-firewall.sh", "knockknock-daemon.py", 
-                              "knockknock-genprofile.py", "knockknock-proxy.py", 
-                              "knockknock.py"]),
-                        ('share/knockknock', ['README', 'INSTALL', 'COPYING']),
-                        ('/etc/knockknock.d/', ['config'])]
-       )
-
-print("Cleaning up...")
+setup(
+    scripts=[
+        'knockknock/knockknock-daemon',
+        'knockknock/knockknock-genprofile',
+        'knockknock/knockknock-proxy',
+        'knockknock/knockknock',
+    ],
+)
 
 if os.path.exists("build/"):
     shutil.rmtree("build/")
@@ -41,10 +26,5 @@ try:
     os.remove("knockknock/knockknock-daemon")
     os.remove("knockknock/knockknock-genprofile")
     os.remove("knockknock/knockknock")
-
-except:
+except OSError:
     pass
-
-def capture(cmd):
-    return os.popen(cmd).read().strip()
-

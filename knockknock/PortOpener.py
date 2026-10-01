@@ -1,55 +1,46 @@
-# Copyright (c) 2009 Moxie Marlinspike
-#
-# This program is free software; you can redistribute it and/or
-# modify it under the terms of the GNU General Public License as
-# published by the Free Software Foundation; either version 3 of the
-# License, or (at your option) any later version.
-#
-# This program is distributed in the hope that it will be useful, but
-# WITHOUT ANY WARRANTY; without even the implied warranty of
-# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-# General Public License for more details.
-#
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-# USA
-#
-
-import os, syslog, time
+import os
 import subprocess
+import syslog
+from typing import Any, Union
 
 from .RuleTimer import RuleTimer
 
+
 class PortOpener:
 
+    def __init__(self, stream: Any, openDuration: Union[int, float]) -> None:
+        self.stream = stream
+        self.openDuration: Union[int, float] = openDuration
 
-    def __init__(self, stream, openDuration):
-        self.stream       = stream
-        self.openDuration = openDuration
-
-    def waitForRequests(self):
+    def waitForRequests(self) -> None:
         while True:
-            sourceIP    = self.stream.readline().rstrip("\n")
-            port        = self.stream.readline().rstrip("\n")
+            sourceIP = self.stream.readline().rstrip("\n")
+            port = self.stream.readline().rstrip("\n")
 
             if sourceIP == "" or port == "":
                 syslog.syslog("knockknock.PortOpener: Parent process is closed.  Terminating.")
-                os._exit(4)                    
+                os._exit(4)
 
-            description = 'INPUT -m limit --limit 1/minute --limit-burst 1 -m state --state NEW -p tcp -s ' + sourceIP + ' --dport ' + str(port) + ' -j ACCEPT'
-            command     = 'iptables -I ' + description
-            command     = command.split()            
+            description = (
+                'INPUT -m limit --limit 1/minute --limit-burst 1 '
+                '-m state --state NEW -p tcp -s '
+                + sourceIP
+                + ' --dport '
+                + str(port)
+                + ' -j ACCEPT'
+            )
+            command = 'iptables -I ' + description
+            command_list = command.split()
 
-            subprocess.call(command, shell=False)
+            subprocess.call(command_list, shell=False)
 
             RuleTimer(self.openDuration, description).start()
 
-    def open(self, sourceIP, port):
+    def open(self, sourceIP: str, port: Union[int, str]) -> None:
         try:
             self.stream.write(sourceIP + "\n")
             self.stream.write(str(port) + "\n")
             self.stream.flush()
-        except:
+        except Exception:
             syslog.syslog("knockknock:  Error, PortOpener process has died.  Terminating.")
             os._exit(4)

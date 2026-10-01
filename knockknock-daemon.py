@@ -1,96 +1,106 @@
 #!/usr/bin/env python
 """knockknock-daemon implements Moxie Marlinspike's port knocking protocol."""
 
-__author__ = "Moxie Marlinspike"
-__email__  = "moxie@thoughtcrime.org"
-__license__= """
-Copyright (c) 2009 Moxie Marlinspike <moxie@thoughtcrime.org>
+import argparse
+import grp
+import os
+from pathlib import Path
+import pwd
+import sys
+from typing import IO, List, NoReturn, Optional
 
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 2 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-USA
-
-"""
-
-import os, sys, pwd, grp
-
-from knockknock.LogEntry import LogEntry
-from knockknock.LogFile import LogFile
-from knockknock.Profiles import Profiles
-from knockknock.PortOpener import PortOpener
 from knockknock.DaemonConfiguration import DaemonConfiguration
 from knockknock.KnockWatcher import KnockWatcher
-
+from knockknock.LogFile import LogFile
+from knockknock.PortOpener import PortOpener
+from knockknock.Profiles import Profiles
 import knockknock.daemonize
 
-def checkPrivileges():
-    if (not os.geteuid() == 0):
+DAEMON_PATH = Path('/etc/knockknock.d')
+PROFILES_PATH = DAEMON_PATH / 'profiles'
+
+
+def usage() -> NoReturn:
+    print("knockknock-daemon")
+    sys.exit(3)
+
+
+class DaemonArgumentParser(argparse.ArgumentParser):
+
+    def error(self, message: str) -> NoReturn:
+        usage()
+
+
+def checkPrivileges() -> None:
+    if not os.geteuid() == 0:
         print("Sorry, you have to run knockknock-daemon as root.")
         sys.exit(3)
 
-def checkConfiguration():
-    if (not os.path.isdir('/etc/knockknock.d/')):
+
+def checkConfiguration() -> None:
+    if not DAEMON_PATH.is_dir():
         print("/etc/knockknock.d/ does not exist.  You need to setup your profiles first..")
         sys.exit(3)
 
-    if (not os.path.isdir('/etc/knockknock.d/profiles/')):
+    if not PROFILES_PATH.is_dir():
         print("/etc/knockknock.d/profiles/ does not exist.  You need to setup your profiles first...")
         sys.exit(3)
 
-def dropPrivileges():
+
+def dropPrivileges() -> None:
     nobody = pwd.getpwnam('nobody')
-    adm    = grp.getgrnam('adm')
+    adm = grp.getgrnam('adm')
 
     os.setgroups([adm.gr_gid])
     os.setgid(adm.gr_gid)
     os.setuid(nobody.pw_uid)
 
-def handleFirewall(input, config):
-    portOpener = PortOpener(input, config.getDelay())
+
+def handleFirewall(input_stream: IO[str], config: DaemonConfiguration) -> None:
+    portOpener = PortOpener(input_stream, config.getDelay())
     portOpener.waitForRequests()
 
-def handleKnocks(output, profiles, config):
+
+def handleKnocks(output_stream: IO[str], profiles: Profiles, config: DaemonConfiguration) -> None:
     dropPrivileges()
-    
-    logFile      = LogFile('/var/log/kern.log')
-    portOpener   = PortOpener(output, config.getDelay())
+
+    logFile = LogFile('/var/log/kern.log')
+    portOpener = PortOpener(output_stream, config.getDelay())
     knockWatcher = KnockWatcher(config, logFile, profiles, portOpener)
 
     knockWatcher.tailAndProcess()
 
-def main(argv):
+
+def main(argv: Optional[List[str]] = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = DaemonArgumentParser(add_help=False)
+    args, extra = parser.parse_known_args(argv)
+    if extra:
+        usage()
+
     checkPrivileges()
     checkConfiguration()
 
-    profiles   = Profiles('/etc/knockknock.d/profiles/')
-    config     = DaemonConfiguration('/etc/knockknock.d/config')
+    profiles = Profiles(str(PROFILES_PATH))
+    config = DaemonConfiguration(str(DAEMON_PATH / 'config'))
 
-    if (profiles.isEmpty()):
+    if profiles.isEmpty():
         print('WARNING: Running knockknock-daemon without any active profiles.')
 
     knockknock.daemonize.createDaemon()
 
-    input, output = os.pipe()
-    pid           = os.fork()
+    input_fd, output_fd = os.pipe()
+    pid = os.fork()
 
     if pid:
-        os.close(input)
-        handleKnocks(os.fdopen(output, 'w'), profiles, config)
+        os.close(input_fd)
+        handleKnocks(os.fdopen(output_fd, 'w'), profiles, config)
     else:
-        os.close(output)
-        handleFirewall(os.fdopen(input, 'r'), config)
-                
+        os.close(output_fd)
+        handleFirewall(os.fdopen(input_fd, 'r'), config)
+
+
 if __name__ == '__main__':
     main(sys.argv[1:])
-

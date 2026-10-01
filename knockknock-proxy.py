@@ -1,87 +1,105 @@
 #!/usr/bin/env python
 
-__author__ = "Moxie Marlinspike"
-__email__  = "moxie@thoughtcrime.org"
-__license__= """
-Copyright (c) 2009 Moxie Marlinspike <moxie@thoughtcrime.org>
+import argparse
+import asyncio
+import os
+from pathlib import Path
+import sys
+from typing import List, NoReturn, Optional
 
-This program is free software; you can redistribute it and/or
-modify it under the terms of the GNU General Public License as
-published by the Free Software Foundation; either version 3 of the
-License, or (at your option) any later version.
-
-This program is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program; if not, write to the Free Software
-Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307
-USA
-
-"""
-
-import os, sys, asyncore, socket
-
+import knockknock.daemonize
 from knockknock.Profiles import Profiles
 from knockknock.proxy.SocksRequestHandler import SocksRequestHandler
 
-import knockknock.daemonize
 
-class ProxyServer(asyncore.dispatcher):
+class ProxyServer:
 
-    def __init__(self, port, profiles):
-        asyncore.dispatcher.__init__(self)
+    def __init__(self, port: int, profiles: Profiles, host: str = "127.0.0.1") -> None:
+        self.port = port
         self.profiles = profiles
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.set_reuse_addr()
-        self.bind(("127.0.0.1", port))
-        self.listen(5)
+        self.host = host
+        self.server: Optional[asyncio.Server] = None
 
-    def handle_accept(self):
-        conn, addr = self.accept()
-        SocksRequestHandler(conn, self.profiles)
+    async def handle_client(
+        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+    ) -> None:
+        handler = SocksRequestHandler(reader, writer, self.profiles)
+        await handler.handle()
+
+    async def start(self) -> None:
+        self.server = await asyncio.start_server(
+            self.handle_client, self.host, self.port
+        )
+
+    async def serve_forever(self) -> None:
+        if self.server is None:
+            await self.start()
+        assert self.server is not None
+        async with self.server:
+            await self.server.serve_forever()
+
+    def close(self) -> None:
+        if self.server is not None:
+            try:
+                self.server.close()
+            except Exception:
+                pass
 
 
-def usage():
+def usage() -> NoReturn:
     print("knockknock-proxy <listenPort>")
     sys.exit(3)
 
-def getProfiles():
-    homedir  = os.path.expanduser('~')
-    profiles = Profiles(homedir + '/.knockknock/')
+
+class ProxyArgumentParser(argparse.ArgumentParser):
+
+    def error(self, message: str) -> NoReturn:
+        usage()
+
+
+def getProfiles() -> Profiles:
+    homedir = Path.home()
+    profiles = Profiles(str(homedir / '.knockknock/'))
     profiles.resolveNames()
-    
+
     return profiles
 
-def checkPrivileges():
+
+def checkPrivileges() -> None:
     if not os.geteuid() == 0:
         print("\nSorry, knockknock-proxy has to be run as root.\n")
         usage()
 
-def checkProfiles():
-    homedir = os.path.expanduser('~')
 
-    if not os.path.isdir(homedir + '/.knockknock/'):
-        print("Error: you need to setup your profiles in " + homedir + "/.knockknock/")
+def checkProfiles() -> None:
+    homedir = Path.home()
+
+    if not (homedir / '.knockknock').is_dir():
+        print("Error: you need to setup your profiles in " + str(homedir) + "/.knockknock/")
         sys.exit(2)
 
-def main(argv):
-    
-    if len(argv) != 1:
+
+def main(argv: Optional[List[str]] = None) -> None:
+    if argv is None:
+        argv = sys.argv[1:]
+
+    parser = ProxyArgumentParser(add_help=False)
+    parser.add_argument("listenPort", nargs="?", type=int)
+
+    args, extra = parser.parse_known_args(argv)
+    if extra or args.listenPort is None:
         usage()
-        
+
     checkPrivileges()
     checkProfiles()
 
-    profiles = getProfiles()        
-    server   = ProxyServer(int(argv[0]), profiles)
+    profiles = getProfiles()
+    server = ProxyServer(args.listenPort, profiles)
 
     knockknock.daemonize.createDaemon()
-    
-    asyncore.loop(use_poll=True)
+
+    asyncio.run(server.serve_forever())
+
 
 if __name__ == '__main__':
     main(sys.argv[1:])
-
