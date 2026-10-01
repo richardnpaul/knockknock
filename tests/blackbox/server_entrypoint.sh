@@ -57,6 +57,9 @@ nft add rule inet filter input ct state established,related accept
 nft add rule inet filter REJECTLOG 'log prefix "REJECT " flags tcp sequence,options flags ip options'
 nft add rule inet filter REJECTLOG reject with tcp reset
 
+# Allow knockknock authenticated packets
+nft add rule inet filter input meta mark 0x4b4b accept
+
 # Route knock port (7000) and protected service (8080) to REJECTLOG
 nft add rule inet filter input tcp dport '{ 7000, 8080 }' jump REJECTLOG
 

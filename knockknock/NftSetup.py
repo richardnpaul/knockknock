@@ -50,6 +50,10 @@ class NftSetup:
             "meter",
             "open_limit",
             "{ ip saddr limit rate 1/minute burst 1 packets }",
+            "meta",
+            "mark",
+            "set",
+            "0x4b4b",
             "accept",
         ]
 

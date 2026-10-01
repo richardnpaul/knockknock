@@ -103,12 +103,16 @@ Configuring The Server Firewall Rules:
       * sudo nft add rule inet filter input iif "lo" accept
       * sudo nft add rule inet filter input ct state established,related accept
 
-    3. Configure the REJECTLOG chain to log knocks and reject with TCP reset:
+    3. Allow traffic authenticated by knockknock (marked with 0x4b4b):
+
+      * sudo nft add rule inet filter input meta mark 0x4b4b accept
+
+    4. Configure the REJECTLOG chain to log knocks and reject with TCP reset:
 
       * sudo nft add rule inet filter REJECTLOG 'log prefix "REJECT " flags tcp sequence,options flags ip options'
       * sudo nft add rule inet filter REJECTLOG reject with tcp reset
 
-    4. Route knock ports and protected service ports to REJECTLOG, allowing public ports:
+    5. Route knock ports and protected service ports to REJECTLOG, allowing public ports:
 
       * sudo nft add rule inet filter input tcp dport 80 accept
       * sudo nft add rule inet filter input tcp dport '{ <knockPort>, <protectedPort> }' jump REJECTLOG
